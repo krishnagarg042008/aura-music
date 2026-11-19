@@ -201,18 +201,24 @@ function highlightPlayingRows() {
 // ================= WEB AUDIO & VISUALS =================
 function initWebAudio() {
   if (audioCtx) {
-    if (audioCtx.state === "suspended") audioCtx.resume();
+    if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
     return;
   }
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  audioCtx = new Ctx();
-  const source = audioCtx.createMediaElementSource(audio);
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 256;
-  analyser.smoothingTimeConstant = 0.8;
-  source.connect(analyser);
-  analyser.connect(audioCtx.destination);
-  freqData = new Uint8Array(analyser.frequencyBinCount);
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx = new Ctx();
+    const source = audioCtx.createMediaElementSource(audio);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+  } catch (err) {
+    console.warn("WebAudio init fallback:", err);
+  }
 }
 
 artContainer.addEventListener("mousemove", (e) => {
@@ -704,6 +710,16 @@ audio.addEventListener("pause", () => {
 
 audio.addEventListener("ended", () => {
   if (currentIndex + 1 < queue.length) playTrack(currentIndex + 1);
+});
+
+audio.addEventListener("error", (e) => {
+  const errCode = audio.error ? audio.error.code : "unknown";
+  console.error("Audio playback error:", e, "code:", errCode);
+  syncBadge.textContent = "STREAM ERROR";
+  showToast("Audio error loading track. Trying next song...");
+  setTimeout(() => {
+    if (currentIndex + 1 < queue.length) playTrack(currentIndex + 1);
+  }, 2500);
 });
 
 seekBar.addEventListener("input", () => {

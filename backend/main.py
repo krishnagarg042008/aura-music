@@ -25,12 +25,20 @@ STREAM_CACHE: Dict[str, Tuple[str, str, float]] = {}
 http_client: Optional[httpx.AsyncClient] = None
 
 
+def get_http_client() -> httpx.AsyncClient:
+    global http_client
+    if http_client is None or http_client.is_closed:
+        http_client = httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(20.0, read=60.0))
+    return http_client
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global http_client
-    http_client = httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(20.0, read=60.0))
+    get_http_client()
     yield
-    await http_client.aclose()
+    global http_client
+    if http_client and not http_client.is_closed:
+        await http_client.aclose()
 
 
 app = FastAPI(title="AURA Music Engine", lifespan=lifespan)
@@ -240,9 +248,9 @@ async def get_track_meta(
     duration: int = Query(0),
     thumb: str = Query(""),
 ):
-    assert http_client is not None
-    lyrics_task = fetch_synced_lyrics(http_client, title, artist, duration or None)
-    palette_task = extract_palette(http_client, thumb)
+    client = get_http_client()
+    lyrics_task = fetch_synced_lyrics(client, title, artist, duration or None)
+    palette_task = extract_palette(client, thumb)
     lyrics_data, palette = await asyncio.gather(lyrics_task, palette_task)
 
     vibe = classify_vibe(title, artist, lyrics_data.get("plain_text", ""))
@@ -259,7 +267,7 @@ async def get_track_meta(
 @app.get("/api/playlist")
 async def import_youtube_playlist(url: str = Query(..., min_length=2)):
     """Import tracks from any Public or Unlisted YouTube / YT Music playlist URL or ID."""
-    assert http_client is not None
+    client = get_http_client()
     raw = url.strip()
     parsed = urlparse(raw)
     qs = parse_qs(parsed.query)
@@ -283,7 +291,7 @@ async def import_youtube_playlist(url: str = Query(..., min_length=2)):
 
     # Method 1: Direct YouTube playlist page parse (fast & works for Public/Unlisted YT & YT Music playlists)
     try:
-        resp = await http_client.get(
+        resp = await client.get(
             f"https://www.youtube.com/playlist?list={playlist_id}",
             headers={
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -405,9 +413,9 @@ async def import_youtube_playlist(url: str = Query(..., min_length=2)):
     )
 
 
-@app.get("/api/stream/{video_id}")
+@app.api_route("/api/stream/{video_id}", methods=["GET", "HEAD"])
 async def stream_audio(video_id: str, request: Request):
-    assert http_client is not None
+    client = get_http_client()
     try:
         stream_url, content_type = await asyncio.to_thread(_resolve_youtube_audio, video_id)
     except Exception as exc:
@@ -419,24 +427,33 @@ async def stream_audio(video_id: str, request: Request):
     if "range" in request.headers:
         req_headers["Range"] = request.headers["range"]
 
-    upstream_req = http_client.build_request("GET", stream_url, headers=req_headers)
-    upstream_resp = await http_client.send(upstream_req, stream=True)
+    upstream_req = client.build_request(request.method, stream_url, headers=req_headers)
+    upstream_resp = await client.send(upstream_req, stream=True)
 
     if upstream_resp.status_code in (403, 410):
         await upstream_resp.aclose()
         STREAM_CACHE.pop(video_id, None)
         stream_url, content_type = await asyncio.to_thread(_resolve_youtube_audio, video_id)
-        upstream_req = http_client.build_request("GET", stream_url, headers=req_headers)
-        upstream_resp = await http_client.send(upstream_req, stream=True)
+        upstream_req = client.build_request(request.method, stream_url, headers=req_headers)
+        upstream_resp = await client.send(upstream_req, stream=True)
 
     resp_headers = {
         "Accept-Ranges": "bytes",
         "Cache-Control": "no-cache",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Range, Content-Range, Accept-Ranges, Content-Type, Origin, User-Agent",
+        "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges, Content-Type",
     }
     for h in ("content-length", "content-range", "content-type"):
         if h in upstream_resp.headers:
             resp_headers[h.title()] = upstream_resp.headers[h]
     resp_headers.setdefault("Content-Type", content_type)
+
+    if request.method == "HEAD":
+        await upstream_resp.aclose()
+        from fastapi.responses import Response
+        return Response(status_code=upstream_resp.status_code, headers=resp_headers)
 
     async def byte_generator():
         try:
