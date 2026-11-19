@@ -94,32 +94,51 @@ def _resolve_youtube_audio(video_id: str) -> Tuple[str, str]:
     if cached and cached[2] > now:
         return cached[0], cached[1]
 
-    ydl_opts = {
-        "format": "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio/best",
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "extract_flat": False,
-    }
+    # Try mobile player clients (android, ios, mweb) to bypass "Sign in to confirm you're not a bot" on datacenter IPs (Vercel, Render, AWS)
+    client_candidates = [
+        ["android"],
+        ["android", "ios"],
+        ["mweb"],
+        ["web"],
+    ]
+
     url = f"https://www.youtube.com/watch?v={video_id}"
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        stream_url = info.get("url")
-        ext = info.get("ext", "m4a")
-        mime_map = {
-            "m4a": "audio/mp4",
-            "mp4": "audio/mp4",
-            "webm": "audio/webm",
-            "opus": "audio/ogg",
-            "mp3": "audio/mpeg",
+    mime_map = {
+        "m4a": "audio/mp4",
+        "mp4": "audio/mp4",
+        "webm": "audio/webm",
+        "opus": "audio/ogg",
+        "mp3": "audio/mpeg",
+    }
+
+    last_error = None
+    for clients in client_candidates:
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "extract_flat": False,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": clients
+                }
+            },
         }
-        content_type = mime_map.get(ext, "audio/mp4")
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                stream_url = info.get("url")
+                ext = info.get("ext", "mp4")
+                content_type = mime_map.get(ext, "audio/mp4")
+                if stream_url:
+                    STREAM_CACHE[video_id] = (stream_url, content_type, now + 1800)
+                    return stream_url, content_type
+        except Exception as exc:
+            last_error = exc
+            continue
 
-    if not stream_url:
-        raise RuntimeError("No audio stream URL extracted")
-
-    STREAM_CACHE[video_id] = (stream_url, content_type, now + 1800)
-    return stream_url, content_type
+    raise RuntimeError(f"Could not extract audio stream: {last_error}")
 
 
 def _extract_yt_initial_data(html: str) -> Optional[Dict[str, Any]]:
