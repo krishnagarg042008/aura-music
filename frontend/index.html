@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0b14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="AURA - Immersive Spatial 3D YouTube Music Player with kinetic synchronized lyrics and dynamic vibes" />
+  <title>AURA — Spatial YouTube Music</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="/css/styles.css?v=5" />
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.187.0/three.module.min.js"
+      }
+    }
+  </script>
+</head>
+<body data-vibe="synth">
+  <canvas id="bg-canvas"></canvas>
+  <div class="glass-vignette"></div>
+
+  <div id="app" class="app-shell" data-mobile-view="player">
+    <aside class="sidebar glass-panel" id="sidebar-panel">
+      <div class="brand">
+        <div class="brand-orb"></div>
+        <span>AURA</span>
+        <button id="sidebar-close-btn" class="icon-btn mobile-only sidebar-close-btn" title="Back to Player">&times;</button>
+      </div>
+
+      <!-- Sidebar Mode Switcher -->
+      <div class="nav-tabs">
+        <button id="tab-discover" class="nav-tab active">Discover</button>
+        <button id="tab-playlists" class="nav-tab">Playlists</button>
+      </div>
+
+      <!-- DISCOVER VIEW -->
+      <div id="discover-panel" class="sidebar-panel">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 14z"/></svg>
+          <input id="search-input" type="text" placeholder="Search any YouTube song..." autocomplete="off" />
+          <button id="clear-search" class="icon-btn hidden" title="Clear">&times;</button>
+        </div>
+
+        <div class="section-label" id="list-heading">Curated Spatial Mix</div>
+        <div id="track-list" class="track-list">
+          <div class="skeleton-loader">Loading YouTube catalog...</div>
+        </div>
+      </div>
+
+      <!-- PLAYLISTS VIEW -->
+      <div id="playlists-panel" class="sidebar-panel hidden">
+        <!-- Playlist Overview -->
+        <div id="playlist-home" class="playlist-subview">
+          <div class="playlist-actions-bar">
+            <button id="new-playlist-btn" class="pl-action-btn">+ New Playlist</button>
+            <button id="toggle-import-btn" class="pl-action-btn secondary">Import YT Link</button>
+          </div>
+
+          <div id="import-box" class="import-box hidden">
+            <input id="import-url-input" type="text" placeholder="Paste YouTube / YT Music playlist URL..." />
+            <button id="import-submit-btn">Import</button>
+          </div>
+          <div id="import-status" class="import-status hidden"></div>
+
+          <div id="playlists-list" class="track-list"></div>
+        </div>
+
+        <!-- Inside a Specific Playlist -->
+        <div id="playlist-detail" class="playlist-subview hidden">
+          <div class="pl-detail-header">
+            <button id="pl-back-btn" class="pl-back-btn">&larr; All</button>
+            <div class="pl-detail-meta">
+              <div id="pl-detail-name" class="pl-detail-name">Playlist</div>
+              <div id="pl-detail-count" class="pl-detail-count">0 songs</div>
+            </div>
+            <button id="pl-play-all-btn" class="pl-play-all" title="Play playlist">&#9654;</button>
+          </div>
+          <div id="pl-tracks-list" class="track-list"></div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="stage" id="stage-panel">
+      <header class="stage-header">
+        <div class="vibe-bar glass-pill" id="vibe-bar">
+          <span class="vibe-dot"></span>
+          <span class="vibe-title" id="vibe-label">Neon Synth</span>
+          <div class="vibe-pills" id="vibe-pills">
+            <button data-vibe="chill">Chill</button>
+            <button data-vibe="hype">Hype</button>
+            <button data-vibe="synth" class="active">Synth</button>
+            <button data-vibe="melancholy">Rain</button>
+            <button data-vibe="rock">Rock</button>
+            <button data-vibe="romantic">Romance</button>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <div class="sync-tuner glass-pill" title="Adjust lyrics timing for YouTube intros">
+            <span>Sync</span>
+            <button id="offset-minus" aria-label="Decrease offset by 0.25s">-0.25s</button>
+            <span id="offset-val">0.00s</span>
+            <button id="offset-plus" aria-label="Increase offset by 0.25s">+0.25s</button>
+          </div>
+          <button id="immersion-btn" class="glass-pill action-pill desktop-only">Cinema Mode</button>
+        </div>
+      </header>
+
+      <div class="stage-grid">
+        <section class="now-playing-col" id="player-view-col">
+          <div class="art-container" id="art-container">
+            <div class="cover-ring"></div>
+            <img id="album-art" src="" alt="Album Art" referrerpolicy="no-referrer" class="album-art hidden" />
+            <div id="art-placeholder" class="art-placeholder">
+              <span>Search &amp; play any song</span>
+            </div>
+            <div class="cover-eq" id="cover-eq">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+
+          <div class="track-meta-row">
+            <div class="track-meta">
+              <h1 id="track-title">Select a Track</h1>
+              <p id="track-artist">Every song on YouTube, spatialized in 3D</p>
+            </div>
+            <div class="track-meta-btns">
+              <button id="fav-btn" class="mini-round-btn" title="Save to Favorites" aria-label="Save to Favorites">
+                <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              </button>
+              <button id="add-to-pl-btn" class="mini-round-btn" title="Add to Playlist" aria-label="Add to Playlist">
+                <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="scrubber-wrap">
+            <span id="time-current">0:00</span>
+            <input id="seek-bar" type="range" min="0" max="100" value="0" step="0.1" aria-label="Seek track position" />
+            <span id="time-total">0:00</span>
+          </div>
+
+          <div class="transport">
+            <button id="prev-btn" class="ctrl-btn" title="Previous" aria-label="Previous track">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+            </button>
+            <button id="play-btn" class="ctrl-btn play-main" title="Play / Pause" aria-label="Play or Pause">
+              <svg id="play-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+              <svg id="pause-icon" class="hidden" viewBox="0 0 24 24"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </button>
+            <button id="next-btn" class="ctrl-btn" title="Next" aria-label="Next track">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+            </button>
+          </div>
+
+          <div class="volume-row">
+            <button id="vol-mute-btn" class="vol-btn" title="Mute/Unmute" aria-label="Volume">
+              <svg viewBox="0 0 24 24" class="vol-icon"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+            </button>
+            <input id="volume-bar" type="range" min="0" max="1" step="0.01" value="0.85" aria-label="Volume control" />
+            <span id="sync-badge" class="sync-badge">IDLE</span>
+          </div>
+
+          <button id="mobile-lyrics-quick-btn" class="mobile-lyrics-pill glass-pill mobile-only" title="View Lyrics">
+            <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h4l3 3 3-3h4c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H7v-2h10v2zm0-3H7V9h10v2zm0-3H7V6h10v2z"/></svg>
+            <span>Live Lyrics</span>
+          </button>
+        </section>
+
+        <section class="lyrics-col" id="lyrics-view-col">
+          <div class="lyrics-mobile-header mobile-only">
+            <button id="lyrics-back-btn" class="lyrics-back-btn glass-pill">&larr; Player</button>
+            <span class="lyrics-mobile-title">Live Lyrics</span>
+          </div>
+          <div id="lyrics-viewport" class="lyrics-viewport">
+            <div id="lyrics-container" class="lyrics-container">
+              <p class="lyrics-empty">Lyrics will synchronize word-for-word here and adapt to your song's vibe.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Mobile Floating Mini-Player (Active on Discover & Lyrics views) -->
+  <div id="mobile-mini-player" class="mobile-mini-player glass-panel hidden">
+    <div class="mini-player-progress-bar">
+      <div id="mini-progress-fill" class="mini-progress-fill"></div>
+    </div>
+    <div class="mini-player-body">
+      <img id="mini-album-art" src="" alt="" class="mini-art" />
+      <div class="mini-meta">
+        <div id="mini-title" class="mini-title">Select a Track</div>
+        <div id="mini-artist" class="mini-artist">AURA Music</div>
+      </div>
+      <div class="mini-actions">
+        <button id="mini-play-btn" class="mini-ctrl-btn" title="Play / Pause" aria-label="Play or Pause">
+          <svg id="mini-play-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+          <svg id="mini-pause-icon" class="hidden" viewBox="0 0 24 24"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Navigation Bar -->
+  <nav id="mobile-nav" class="mobile-nav glass-panel" aria-label="Mobile Navigation">
+    <button id="mobile-tab-player" class="mobile-nav-btn active" data-target="player">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+      <span>Player</span>
+    </button>
+    <button id="mobile-tab-lyrics" class="mobile-nav-btn" data-target="lyrics">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h4l3 3 3-3h4c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H7v-2h10v2zm0-3H7V9h10v2zm0-3H7V6h10v2z"/></svg>
+      <span>Lyrics</span>
+    </button>
+    <button id="mobile-tab-discover" class="mobile-nav-btn" data-target="discover">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 14z"/></svg>
+      <span>Explore</span>
+    </button>
+  </nav>
+
+  <!-- Add to Playlist Modal -->
+  <div id="playlist-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-track-name">
+    <div class="modal-card glass-panel">
+      <div class="modal-header">
+        <div>
+          <h3>Add to Playlist</h3>
+          <p id="modal-track-name" class="modal-sub">Select a playlist</p>
+        </div>
+        <button id="modal-close-btn" class="icon-btn" aria-label="Close modal">&times;</button>
+      </div>
+
+      <div id="modal-playlist-options" class="modal-options"></div>
+
+      <div class="modal-create-row">
+        <input id="modal-new-pl-input" type="text" placeholder="Or type a new playlist name..." />
+        <button id="modal-create-btn">Create &amp; Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <audio id="audio-player" crossorigin="anonymous" preload="auto"></audio>
+
+  <script type="module" src="/js/app.js?v=5"></script>
+</body>
+</html>
