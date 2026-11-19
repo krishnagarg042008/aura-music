@@ -1,13 +1,14 @@
 services:
   - type: web
     name: aura-music
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python run.py
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: PORT
-        value: 10000
+        value: 8000
       - key: HOST
         value: 0.0.0.0
-    autoDeploy: true
-    healthCheckPath: /health
