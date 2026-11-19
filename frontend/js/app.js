@@ -1,5 +1,5 @@
 import { VibeScene3D } from "./scene3d.js?v=5";
-import { LyricsEngine } from "./lyrics.js?v=5";
+import { LyricsEngine } from "./lyrics.js?v=6";
 
 const STORAGE_KEY = "aura_playlists_v1";
 

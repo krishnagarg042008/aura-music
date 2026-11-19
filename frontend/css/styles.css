@@ -916,13 +916,15 @@ input[type="range"]:hover::-webkit-slider-thumb {
     90deg,
     #ffffff 0%,
     #ffffff var(--fill),
-    var(--lyric-dim) calc(var(--fill) + 4%),
+    rgba(255,255,255,0.65) calc(var(--fill) + 2%),
+    var(--lyric-dim) calc(var(--fill) + 6%),
     var(--lyric-dim) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 0.22s ease;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 0.18s ease;
   will-change: background-image, transform;
+  padding: 0 1px;
 }
 
 .lyric-word.word-active {

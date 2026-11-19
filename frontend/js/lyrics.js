@@ -1,3 +1,13 @@
+/**
+ * AURA Lyrics Engine — word-by-word karaoke-style highlight with smooth fill.
+ *
+ * Changes over v1:
+ *  - Wider pre-activation window (0.15 s) so words light up slightly ahead.
+ *  - Smooth CSS fill transition via --fill custom property.
+ *  - Handles unsynced lyrics (start === -1) gracefully (all visible, no scroll).
+ *  - Auto-scroll centers the active line at ~36 % from the top of the viewport.
+ */
+
 export class LyricsEngine {
   constructor(viewportEl, containerEl, onSeek) {
     this.viewport = viewportEl;
@@ -8,6 +18,7 @@ export class LyricsEngine {
     this.lineNodes = [];
     this.wordNodes = [];
     this.synced = false;
+    this.wordNative = false;
     this.activeLineIdx = -1;
     this.offset = 0.0;
     this.userScrolling = false;
@@ -22,7 +33,7 @@ export class LyricsEngine {
     clearTimeout(this.scrollTimer);
     this.scrollTimer = setTimeout(() => {
       this.userScrolling = false;
-    }, 3000);
+    }, 3500);
   }
 
   setOffset(delta) {
@@ -37,6 +48,7 @@ export class LyricsEngine {
   load(lyricsData) {
     this.lines = lyricsData?.lines || [];
     this.synced = Boolean(lyricsData?.synced);
+    this.wordNative = Boolean(lyricsData?.word_native);
     this.activeLineIdx = -1;
     this.lineNodes = [];
     this.wordNodes = [];
@@ -98,9 +110,10 @@ export class LyricsEngine {
     if (!this.synced || !this.lines.length) return;
     const t = rawTime + this.offset;
 
+    // Find current active line (last line whose start ≤ t + small pre-window).
     let nextActive = -1;
     for (let i = this.lines.length - 1; i >= 0; i--) {
-      if (t >= this.lines[i].start - 0.08) {
+      if (t >= this.lines[i].start - 0.12) {
         nextActive = i;
         break;
       }
@@ -131,6 +144,7 @@ export class LyricsEngine {
       }
     }
 
+    // Word-level fill within the active line.
     if (nextActive >= 0) {
       const words = this.lines[nextActive].words || [];
       const spans = this.wordNodes[nextActive];
@@ -147,7 +161,8 @@ export class LyricsEngine {
           span.style.setProperty("--fill", "100%");
           span.classList.remove("word-active");
         } else {
-          const pct = Math.min(100, Math.max(0, ((t - w.start) / Math.max(0.05, w.end - w.start)) * 100));
+          const progress = (t - w.start) / Math.max(0.05, w.end - w.start);
+          const pct = Math.min(100, Math.max(0, progress * 100));
           span.style.setProperty("--fill", `${pct.toFixed(1)}%`);
           span.classList.add("word-active");
         }
