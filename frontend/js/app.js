@@ -541,9 +541,17 @@ async function playTrack(idx) {
     applyVibe(meta.vibe, false);
     lyricsEngine.load(meta.lyrics);
 
-    if (meta.lyrics.word_native) syncBadge.textContent = "WORD SYNC";
-    else if (meta.lyrics.synced) syncBadge.textContent = "SMART SYNC";
-    else syncBadge.textContent = "PLAIN";
+    if (meta.lyrics.word_native) {
+      syncBadge.textContent = "WORD SYNC";
+    } else if (meta.lyrics.smart_sync) {
+      syncBadge.textContent = "SMART SYNC";
+    } else if (meta.lyrics.synced) {
+      syncBadge.textContent = "LRC SYNC";
+    } else if (meta.lyrics.lines && meta.lyrics.lines.length) {
+      syncBadge.textContent = "PLAIN";
+    } else {
+      syncBadge.textContent = "AUDIO ONLY";
+    }
   } catch (err) {
     console.error("Metadata error:", err);
     syncBadge.textContent = "AUDIO ONLY";
@@ -990,6 +998,12 @@ offsetPlus.addEventListener("click", () => {
   offsetVal.textContent = `${val >= 0 ? "+" : ""}${val.toFixed(2)}s`;
 });
 
+offsetVal?.addEventListener("click", () => {
+  lyricsEngine.resetOffset();
+  offsetVal.textContent = "0.00s";
+  showToast("Sync offset reset to 0.00s");
+});
+
 immersionBtn.addEventListener("click", () => {
   const active = appShell.classList.toggle("cinema-mode");
   immersionBtn.textContent = active ? "Exit Cinema" : "Cinema Mode";
@@ -1013,6 +1027,12 @@ window.addEventListener("keydown", (e) => {
     } else {
       audio.currentTime = Math.max(0, audio.currentTime - 5);
     }
+  } else if (e.key === "[") {
+    const val = lyricsEngine.setOffset(-0.25);
+    offsetVal.textContent = `${val >= 0 ? "+" : ""}${val.toFixed(2)}s`;
+  } else if (e.key === "]") {
+    const val = lyricsEngine.setOffset(0.25);
+    offsetVal.textContent = `${val >= 0 ? "+" : ""}${val.toFixed(2)}s`;
   }
 });
 
