@@ -232,6 +232,7 @@ async def search_tracks(q: str = Query(..., min_length=1), limit: int = 18):
 
 @app.get("/api/trending")
 async def get_trending():
+    """Fallback discover feed — used when no listening history exists yet."""
     def _do_trending():
         queries = [
             "Blinding Lights The Weeknd",
@@ -257,6 +258,107 @@ async def get_trending():
 
     tracks = await asyncio.to_thread(_do_trending)
     return {"results": tracks}
+
+
+@app.post("/api/recommendations")
+async def get_recommendations(request: Request):
+    """
+    Personalised recommendations seeded by listening history.
+
+    Accepts JSON body:
+      {
+        "seedVideoIds": ["id1", "id2", ...],   // recent videoIds (up to 5)
+        "topArtists":   ["artist1", "artist2"], // most-played artists (up to 5)
+        "excludeIds":   ["id3", "id4"]          // already-displayed ids to skip
+      }
+
+    Strategy:
+      1. YouTube Music radio (get_watch_playlist) seeded from recent videoIds.
+      2. Artist-based search for top artists the user listens to.
+      3. De-duplicate and shuffle for variety.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    seed_ids: List[str] = (body.get("seedVideoIds") or [])[:5]
+    top_artists: List[str] = (body.get("topArtists") or [])[:5]
+    exclude_ids: set = set(body.get("excludeIds") or [])
+
+    if not seed_ids and not top_artists:
+        # No history — fall back to trending
+        return await get_trending()
+
+    def _build_recommendations():
+        import random
+        tracks: List[Dict[str, Any]] = []
+        seen: set = set(exclude_ids)
+
+        def _add_track(item: Dict[str, Any]) -> bool:
+            t = _format_track(item)
+            if t and t["videoId"] not in seen:
+                seen.add(t["videoId"])
+                tracks.append(t)
+                return True
+            return False
+
+        # ── Strategy 1: Radio from seed videoIds ──
+        for vid in seed_ids[:3]:
+            try:
+                watch = ytmusic.get_watch_playlist(videoId=vid, limit=15)
+                for item in (watch.get("tracks") or [])[1:]:  # skip [0] = the seed itself
+                    if not isinstance(item, dict):
+                        continue
+                    # get_watch_playlist returns slightly different format
+                    formatted = {
+                        "videoId": item.get("videoId"),
+                        "title": item.get("title") or "",
+                        "artists": item.get("artists") or [],
+                        "album": item.get("album") or {},
+                        "thumbnails": item.get("thumbnail") if isinstance(item.get("thumbnail"), list) else [],
+                        "duration": item.get("length") or "",
+                        "duration_seconds": None,
+                    }
+                    # Parse duration text
+                    dur_text = item.get("length") or ""
+                    if isinstance(dur_text, str) and ":" in dur_text:
+                        parts = [int(p) for p in dur_text.split(":") if p.isdigit()]
+                        if len(parts) == 2:
+                            formatted["duration_seconds"] = parts[0] * 60 + parts[1]
+                            formatted["duration"] = dur_text
+                    _add_track(formatted)
+                    if len(tracks) >= 25:
+                        break
+            except Exception as e:
+                print(f"[Recs] watch_playlist error for {vid}: {e}")
+                continue
+
+        # ── Strategy 2: Search for top artists ──
+        for artist in top_artists[:4]:
+            try:
+                results = ytmusic.search(artist, filter="songs", limit=6)
+                for item in results:
+                    _add_track(item)
+                    if len(tracks) >= 30:
+                        break
+            except Exception as e:
+                print(f"[Recs] artist search error for {artist}: {e}")
+                continue
+
+        # ── Shuffle to mix radio + artist tracks ──
+        if len(tracks) > 8:
+            # Keep first 3 (most relevant radio picks), shuffle the rest
+            head = tracks[:3]
+            tail = tracks[3:]
+            random.shuffle(tail)
+            tracks = head + tail
+
+        return tracks[:20]
+
+    tracks = await asyncio.to_thread(_build_recommendations)
+    return {"results": tracks}
+
 
 
 @app.get("/api/track/{video_id}/meta")

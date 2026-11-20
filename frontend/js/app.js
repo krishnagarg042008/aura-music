@@ -2,6 +2,7 @@ import { VibeScene3D } from "./scene3d.js?v=5";
 import { LyricsEngine } from "./lyrics.js?v=6";
 
 const STORAGE_KEY = "aura_playlists_v1";
+const HISTORY_KEY = "aura_listen_history_v1";
 
 const VIBE_PRESETS = {
   chill: { id: "chill", label: "Liquid Chill", particle_mode: "float", speed: 0.45, default_colors: ["#1e3a5f", "#4fd1c5", "#81e6d9"] },
@@ -267,6 +268,62 @@ function savePlaylists() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(playlists));
 }
 
+// ================= LISTENING HISTORY (for recommendations) =================
+function loadHistory() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || "null");
+    if (raw && typeof raw === "object" && raw.plays) return raw;
+  } catch {}
+  return { plays: [], artistCounts: {} };
+}
+
+let listenHistory = loadHistory();
+
+function saveHistory() {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(listenHistory));
+}
+
+function recordPlay(track) {
+  if (!track || !track.videoId) return;
+
+  // Add to recent plays (keep last 50).
+  listenHistory.plays = listenHistory.plays.filter(p => p.videoId !== track.videoId);
+  listenHistory.plays.unshift({
+    videoId: track.videoId,
+    title: track.title,
+    artist: track.artist,
+    timestamp: Date.now(),
+  });
+  if (listenHistory.plays.length > 50) listenHistory.plays.length = 50;
+
+  // Count artist plays.
+  const artist = track.artist || "";
+  if (artist) {
+    // Split combined artists and count the primary one.
+    const primary = artist.split(/[,&]|\bfeat\.?\b|\bft\.?\b/i)[0].trim();
+    if (primary) {
+      listenHistory.artistCounts[primary] = (listenHistory.artistCounts[primary] || 0) + 1;
+    }
+  }
+
+  saveHistory();
+}
+
+function getTopArtists(n = 5) {
+  const entries = Object.entries(listenHistory.artistCounts || {});
+  entries.sort((a, b) => b[1] - a[1]);
+  return entries.slice(0, n).map(([name]) => name);
+}
+
+function getRecentVideoIds(n = 5) {
+  return (listenHistory.plays || []).slice(0, n).map(p => p.videoId);
+}
+
+function hasListeningHistory() {
+  return (listenHistory.plays || []).length >= 2;
+}
+
+
 function getPlaylist(id) {
   return playlists.find((p) => p.id === id);
 }
@@ -426,6 +483,9 @@ async function playTrack(idx) {
 
   trackTitleEl.textContent = track.title;
   trackArtistEl.textContent = track.artist;
+
+  // Record this play for future recommendations.
+  recordPlay(track);
 
   document.body.setAttribute("data-has-track", "true");
   if (miniAlbumArt) {
@@ -756,7 +816,7 @@ searchInput.addEventListener("input", () => {
   clearTimeout(searchTimer);
 
   if (!q) {
-    loadTrending();
+    loadDiscover();
     return;
   }
 
@@ -776,11 +836,38 @@ searchInput.addEventListener("input", () => {
 clearSearchBtn.addEventListener("click", () => {
   searchInput.value = "";
   clearSearchBtn.classList.add("hidden");
-  loadTrending();
+  loadDiscover();
 });
 
-async function loadTrending() {
+async function loadDiscover() {
+  if (hasListeningHistory()) {
+    // Personalised recommendations.
+    listHeading.textContent = "Recommended For You";
+    trackListEl.innerHTML = `<div class="skeleton-loader">Finding songs you'll love...</div>`;
+    try {
+      const payload = {
+        seedVideoIds: getRecentVideoIds(5),
+        topArtists: getTopArtists(5),
+        excludeIds: getRecentVideoIds(10),
+      };
+      const res = await fetch("/api/recommendations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.results && data.results.length) {
+        renderDiscoverList(data.results);
+        return;
+      }
+    } catch (err) {
+      console.warn("Recommendations failed, falling back to trending:", err);
+    }
+  }
+
+  // Fallback: curated mix for new users or on error.
   listHeading.textContent = "Curated Spatial Mix";
+  trackListEl.innerHTML = `<div class="skeleton-loader">Loading curated mix...</div>`;
   try {
     const res = await fetch("/api/trending");
     const data = await res.json();
@@ -1070,5 +1157,5 @@ window.addEventListener("resize", () => {
   }
 });
 
-loadTrending();
+loadDiscover();
 requestAnimationFrame(mainLoop);
