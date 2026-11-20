@@ -46,6 +46,9 @@ const offsetMinus = document.getElementById("offset-minus");
 const offsetPlus = document.getElementById("offset-plus");
 const offsetVal = document.getElementById("offset-val");
 const immersionBtn = document.getElementById("immersion-btn");
+const cinemaHud = document.getElementById("cinema-hud");
+const cinemaExitBtn = document.getElementById("cinema-exit-btn");
+const cinemaFsBtn = document.getElementById("cinema-fs-btn");
 const appShell = document.getElementById("app");
 
 // Playlist DOM
@@ -168,13 +171,16 @@ function initYouTubePlayer() {
             if (syncBadge.textContent === "SYNCING..." || syncBadge.textContent === "STREAM ERROR") {
               syncBadge.textContent = "PLAYING";
             }
+            onPlaybackStateChanged(true);
           } else if (event.data === YT.PlayerState.PAUSED) {
             playIcon.classList.remove("hidden");
             pauseIcon.classList.add("hidden");
             miniPlayIcon?.classList.remove("hidden");
             miniPauseIcon?.classList.add("hidden");
             artContainer.classList.remove("playing");
+            onPlaybackStateChanged(false);
           } else if (event.data === YT.PlayerState.ENDED) {
+            onPlaybackStateChanged(false);
             if (currentIndex + 1 < queue.length) playTrack(currentIndex + 1);
           }
         },
@@ -483,6 +489,10 @@ async function playTrack(idx) {
 
   trackTitleEl.textContent = track.title;
   trackArtistEl.textContent = track.artist;
+
+  // Reset manual exit flag on new song so cinema mode can automatically engage after 10s uninterrupted playback
+  userExitedCinemaManually = false;
+  onPlaybackStateChanged(false);
 
   // Record this play for future recommendations.
   recordPlay(track);
@@ -929,6 +939,7 @@ audio.addEventListener("play", () => {
   miniPlayIcon?.classList.add("hidden");
   miniPauseIcon?.classList.remove("hidden");
   artContainer.classList.add("playing");
+  onPlaybackStateChanged(true);
 });
 
 audio.addEventListener("pause", () => {
@@ -937,13 +948,16 @@ audio.addEventListener("pause", () => {
   miniPlayIcon?.classList.remove("hidden");
   miniPauseIcon?.classList.add("hidden");
   artContainer.classList.remove("playing");
+  onPlaybackStateChanged(false);
 });
 
 audio.addEventListener("ended", () => {
+  onPlaybackStateChanged(false);
   if (currentIndex + 1 < queue.length) playTrack(currentIndex + 1);
 });
 
 audio.addEventListener("error", (e) => {
+  onPlaybackStateChanged(false);
   const errCode = audio.error ? audio.error.code : "unknown";
   console.warn("Audio playback stream error:", e, "code:", errCode);
   if (currentTrack && !isUsingYTPlayer) {
@@ -1004,14 +1018,176 @@ offsetVal?.addEventListener("click", () => {
   showToast("Sync offset reset to 0.00s");
 });
 
-immersionBtn.addEventListener("click", () => {
-  const active = appShell.classList.toggle("cinema-mode");
-  immersionBtn.textContent = active ? "Exit Cinema" : "Cinema Mode";
+// ================= AUTOMATIC IMMERSIVE CINEMA MODE CONTROLLER =================
+const CINEMA_AUTO_TRIGGER_MS = 10000; // 10s of continuous playback
+const CINEMA_IDLE_TIMEOUT_MS = 3000;  // 3s of mouse inactivity to fade controls
+
+let isCinemaMode = false;
+let userExitedCinemaManually = false;
+let cinemaCountdownTimer = null;
+let cinemaIdleTimer = null;
+
+function onPlaybackStateChanged(isPlaying) {
+  clearTimeout(cinemaCountdownTimer);
+  cinemaCountdownTimer = null;
+
+  if (!isPlaying) return;
+
+  // If already in Cinema Mode or user deliberately exited during this song, don't auto-trigger
+  if (isCinemaMode || userExitedCinemaManually) return;
+
+  cinemaCountdownTimer = setTimeout(() => {
+    // Verify that playback is STILL active and continuous
+    const stillPlaying = isUsingYTPlayer
+      ? Boolean(ytPlayer && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === YT.PlayerState.PLAYING)
+      : Boolean(audio && !audio.paused && !audio.ended && Number.isFinite(audio.currentTime) && audio.currentTime > 0);
+
+    if (stillPlaying && !isCinemaMode && !userExitedCinemaManually) {
+      enterCinemaMode(true /* isAuto */);
+    }
+  }, CINEMA_AUTO_TRIGGER_MS);
+}
+
+function enterCinemaMode(isAuto = false) {
+  if (isCinemaMode) return;
+  isCinemaMode = true;
+  clearTimeout(cinemaCountdownTimer);
+  cinemaCountdownTimer = null;
+
+  appShell.classList.add("cinema-mode");
+  cinemaHud?.classList.remove("hidden");
+  if (immersionBtn) immersionBtn.textContent = "Exit Cinema";
+
+  // Attempt browser Fullscreen API if permitted by browser interaction policy
+  try {
+    if (!document.fullscreenElement) {
+      const p = document.documentElement.requestFullscreen?.();
+      if (p && typeof p.catch === "function") {
+        p.catch(() => {
+          // Automatic fullscreen blocked without direct user gesture;
+          // Cinema mode layout is active and manual Fullscreen button is ready in HUD.
+        });
+      }
+    }
+  } catch {}
+
+  // Smoothly trigger 3D visualizer resize after grid transition
+  setTimeout(() => window.dispatchEvent(new Event("resize")), 250);
+  setTimeout(() => window.dispatchEvent(new Event("resize")), 550);
+
+  resetCinemaInactivity();
+  if (isAuto) {
+    showToast("Cinema Mode activated");
+  }
+}
+
+function exitCinemaMode(manual = true) {
+  if (!isCinemaMode) return;
+  isCinemaMode = false;
+  if (manual) {
+    userExitedCinemaManually = true;
+  }
+
+  clearTimeout(cinemaCountdownTimer);
+  clearTimeout(cinemaIdleTimer);
+  cinemaCountdownTimer = null;
+  cinemaIdleTimer = null;
+
+  appShell.classList.remove("cinema-mode", "cinema-idle");
+  cinemaHud?.classList.add("hidden");
+  if (immersionBtn) immersionBtn.textContent = "Cinema Mode";
+
+  // Exit fullscreen if browser was in fullscreen
+  if (document.fullscreenElement) {
+    try {
+      document.exitFullscreen?.().catch(() => {});
+    } catch {}
+  }
+
+  setTimeout(() => window.dispatchEvent(new Event("resize")), 250);
+  setTimeout(() => window.dispatchEvent(new Event("resize")), 550);
+  if (manual) {
+    showToast("Restored sidebar and playlist view");
+  }
+}
+
+function resetCinemaInactivity() {
+  if (!isCinemaMode) return;
+  appShell.classList.remove("cinema-idle");
+  clearTimeout(cinemaIdleTimer);
+  cinemaIdleTimer = setTimeout(() => {
+    if (isCinemaMode) {
+      appShell.classList.add("cinema-idle");
+    }
+  }, CINEMA_IDLE_TIMEOUT_MS);
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen?.().then(() => {
+      updateFullscreenBtnState(true);
+    }).catch((err) => {
+      console.warn("Fullscreen permission error:", err);
+      showToast("Fullscreen not allowed by browser");
+    });
+  } else {
+    document.exitFullscreen?.().then(() => {
+      updateFullscreenBtnState(false);
+    }).catch(() => {});
+  }
+}
+
+function updateFullscreenBtnState(isFs) {
+  const expandIcon = cinemaFsBtn?.querySelector(".fs-expand");
+  const compressIcon = cinemaFsBtn?.querySelector(".fs-compress");
+  const fsText = cinemaFsBtn?.querySelector(".fs-text");
+  if (expandIcon) expandIcon.classList.toggle("hidden", isFs);
+  if (compressIcon) compressIcon.classList.toggle("hidden", !isFs);
+  if (fsText) fsText.textContent = isFs ? "Exit Fullscreen" : "Fullscreen";
+}
+
+document.addEventListener("fullscreenchange", () => {
+  const isFs = Boolean(document.fullscreenElement);
+  updateFullscreenBtnState(isFs);
+});
+
+// Mouse & Touch interaction tracking for Cinema Mode
+window.addEventListener("mousemove", () => {
+  if (isCinemaMode) resetCinemaInactivity();
+}, { passive: true });
+
+window.addEventListener("touchstart", () => {
+  if (isCinemaMode) resetCinemaInactivity();
+}, { passive: true });
+
+immersionBtn?.addEventListener("click", () => {
+  if (isCinemaMode) {
+    exitCinemaMode(true);
+  } else {
+    enterCinemaMode(false);
+  }
+});
+
+cinemaExitBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  exitCinemaMode(true);
+});
+
+cinemaFsBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleFullscreen();
 });
 
 window.addEventListener("keydown", (e) => {
   const tag = document.activeElement?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
+  if (isCinemaMode) {
+    resetCinemaInactivity();
+    if (e.key === "Escape" || e.code === "Escape") {
+      exitCinemaMode(true);
+      return;
+    }
+  }
   if (e.code === "Space") {
     e.preventDefault();
     playBtn.click();

@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/styles.css?v=5" />
+  <link rel="stylesheet" href="/css/styles.css?v=11" />
 
   <script type="importmap">
     {
@@ -89,6 +89,19 @@
     </aside>
 
     <main class="stage" id="stage-panel">
+      <!-- Cinema Mode Floating HUD Controls -->
+      <div id="cinema-hud" class="cinema-hud hidden" aria-label="Cinema Mode Controls">
+        <button id="cinema-exit-btn" class="cinema-hud-pill glass-pill" title="Exit Cinema Mode (Esc)">
+          <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          <span>Exit Cinema</span>
+        </button>
+        <button id="cinema-fs-btn" class="cinema-hud-pill glass-pill" title="Toggle Fullscreen">
+          <svg viewBox="0 0 24 24" class="icon fs-expand"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+          <svg viewBox="0 0 24 24" class="icon fs-compress hidden"><path fill="currentColor" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-14v3h3v2h-5V5h2z"/></svg>
+          <span class="fs-text">Fullscreen</span>
+        </button>
+      </div>
+
       <header class="stage-header">
         <div class="vibe-bar glass-pill" id="vibe-bar">
           <span class="vibe-dot"></span>
@@ -253,6 +266,6 @@
   <div id="yt-player-box" style="position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-999;"></div>
 
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script type="module" src="/js/app.js?v=10"></script>
+  <script type="module" src="/js/app.js?v=11"></script>
 </body>
 </html>

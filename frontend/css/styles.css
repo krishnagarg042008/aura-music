@@ -117,6 +117,7 @@ html, body {
   display: none !important;
 }
 
+/* ================= IMMERSIVE CINEMA MODE ================= */
 .app-shell {
   position: relative;
   z-index: 2;
@@ -129,12 +130,13 @@ html, body {
   padding: 18px;
   gap: 18px;
   overflow: hidden;
-  transition: grid-template-columns 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: grid-template-columns 0.5s cubic-bezier(0.22, 1, 0.36, 1), padding 0.5s ease;
 }
 
 .app-shell.cinema-mode {
   grid-template-columns: 0px 1fr;
   gap: 0;
+  padding: 16px 36px 20px;
 }
 
 .app-shell.cinema-mode .sidebar {
@@ -143,6 +145,177 @@ html, body {
   pointer-events: none;
   padding: 0;
   border: none;
+  margin: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transition: opacity 0.45s ease, transform 0.45s ease, padding 0.45s ease, visibility 0.45s;
+}
+
+.app-shell.cinema-mode .stage {
+  border-radius: 28px;
+  background: rgba(10, 15, 24, 0.45);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: background 0.5s ease, border-radius 0.5s ease, box-shadow 0.5s ease;
+}
+
+.app-shell.cinema-mode .stage-header {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.app-shell.cinema-mode .stage-grid {
+  grid-template-columns: minmax(360px, 460px) 1.25fr;
+  gap: 56px;
+  max-width: 1540px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 12px 36px 20px;
+  align-items: center;
+  transition: all 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-shell.cinema-mode .now-playing-col {
+  padding: 12px 0;
+  transition: all 0.4s ease;
+}
+
+.app-shell.cinema-mode .art-container {
+  width: min(370px, 90%);
+  border-radius: 32px;
+  box-shadow: 0 35px 95px rgba(0, 0, 0, 0.75), 0 0 65px rgba(6, 182, 212, 0.18);
+  transition: width 0.5s ease, transform 0.12s ease-out, box-shadow 0.5s ease;
+}
+
+.app-shell.cinema-mode .cover-ring {
+  inset: -18px;
+  border-radius: 42px;
+  filter: blur(28px);
+  opacity: 0.75;
+}
+
+.app-shell.cinema-mode .art-container.playing .cover-ring {
+  opacity: 1;
+  filter: blur(34px);
+}
+
+.app-shell.cinema-mode .track-meta h1 {
+  font-size: clamp(1.4rem, 2.2vw, 1.85rem);
+  letter-spacing: -0.02em;
+}
+
+.app-shell.cinema-mode .track-meta p {
+  font-size: 0.98rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Expanded Prominent Lyrics in Cinema Mode */
+.app-shell.cinema-mode .lyrics-col {
+  padding-left: 10px;
+  transition: all 0.5s ease;
+}
+
+.app-shell.cinema-mode .lyrics-viewport {
+  padding: 38vh 24px 44vh;
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 15%, #000 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 15%, #000 85%, transparent 100%);
+}
+
+.app-shell.cinema-mode .lyrics-container {
+  gap: 36px;
+}
+
+.app-shell.cinema-mode .lyric-line {
+  font-size: clamp(2.2rem, 3.2vw, 3.7rem);
+  line-height: 1.26;
+  column-gap: 0.32em;
+  row-gap: 0.1em;
+  filter: blur(1.8px);
+  opacity: 0.28;
+  transform: scale(0.94);
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), filter 0.45s ease, opacity 0.45s ease;
+}
+
+.app-shell.cinema-mode .lyric-line.active {
+  opacity: 1;
+  filter: blur(0px);
+  transform: scale(1.05);
+  text-shadow: 0 0 35px rgba(255, 255, 255, 0.25);
+}
+
+.app-shell.cinema-mode .lyric-line.past {
+  opacity: 0.22;
+  filter: blur(1.2px);
+  transform: scale(0.96);
+}
+
+/* Floating Cinema Mode HUD */
+.cinema-hud {
+  position: absolute;
+  top: 20px;
+  right: 28px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.cinema-hud.hidden {
+  display: none !important;
+}
+
+.cinema-hud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  transition: background 0.2s, transform 0.15s, border-color 0.2s;
+}
+
+.cinema-hud-pill:hover {
+  background: rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.cinema-hud-pill .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Cinema Mode Idle State (Fades out distractions after 3s of mouse inactivity) */
+.app-shell.cinema-mode.cinema-idle {
+  cursor: none;
+}
+
+.app-shell.cinema-mode.cinema-idle .stage-header {
+  opacity: 0;
+  transform: translateY(-18px);
+  pointer-events: none;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.app-shell.cinema-mode.cinema-idle .cinema-hud {
+  opacity: 0;
+  transform: translateY(-14px);
+  pointer-events: none;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.app-shell.cinema-mode.cinema-idle .scrubber-wrap,
+.app-shell.cinema-mode.cinema-idle .transport,
+.app-shell.cinema-mode.cinema-idle .volume-row,
+.app-shell.cinema-mode.cinema-idle .track-meta-btns {
+  opacity: 0;
+  transform: translateY(14px);
+  pointer-events: none;
+  transition: opacity 0.6s ease, transform 0.6s ease;
 }
 
 .glass-panel {
@@ -1646,6 +1819,27 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 
   .mobile-nav {
     display: flex;
+    transition: transform 0.4s ease, opacity 0.4s ease;
+  }
+
+  .app-shell.cinema-mode {
+    padding: 8px 8px 12px;
+  }
+  .app-shell.cinema-mode .mobile-nav {
+    transform: translateY(120%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .app-shell.cinema-mode .cinema-hud {
+    top: 10px;
+    right: 12px;
+  }
+  .app-shell.cinema-mode .stage-grid {
+    padding: 10px 12px 14px;
+    gap: 16px;
+  }
+  .app-shell.cinema-mode .lyric-line {
+    font-size: clamp(1.8rem, 5.5vw, 2.4rem);
   }
 
   .app-shell {
