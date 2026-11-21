@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/styles.css?v=11" />
+  <link rel="stylesheet" href="/css/styles.css?v=12" />
 
   <script type="importmap">
     {
@@ -39,6 +39,7 @@
       <div class="nav-tabs">
         <button id="tab-discover" class="nav-tab active">Discover</button>
         <button id="tab-playlists" class="nav-tab">Playlists</button>
+        <button id="tab-queue" class="nav-tab">Queue (<span id="tab-queue-count">0</span>)</button>
       </div>
 
       <!-- DISCOVER VIEW -->
@@ -86,11 +87,35 @@
           <div id="pl-tracks-list" class="track-list"></div>
         </div>
       </div>
+
+      <!-- QUEUE VIEW (SIDEBAR) -->
+      <div id="queue-sidebar-panel" class="sidebar-panel hidden">
+        <div class="queue-panel-header">
+          <div class="queue-panel-meta">
+            <div class="queue-panel-title">Play Queue</div>
+            <div id="sidebar-queue-sub" class="queue-panel-sub">0 tracks upcoming</div>
+          </div>
+          <button id="sidebar-queue-clear-btn" class="glass-pill queue-pill-btn" title="Clear upcoming tracks">Clear</button>
+        </div>
+
+        <div class="section-label">Currently Playing</div>
+        <div id="sidebar-queue-current" class="queue-current-card"></div>
+
+        <div class="queue-section-header">
+          <div class="section-label" style="margin: 0;">Up Next</div>
+          <span id="sidebar-queue-up-next-badge" class="queue-up-next-badge">0 tracks</span>
+        </div>
+        <div id="sidebar-queue-list" class="queue-track-list"></div>
+      </div>
     </aside>
 
     <main class="stage" id="stage-panel">
       <!-- Cinema Mode Floating HUD Controls -->
       <div id="cinema-hud" class="cinema-hud hidden" aria-label="Cinema Mode Controls">
+        <button id="cinema-queue-btn" class="cinema-hud-pill glass-pill" title="Toggle Queue">
+          <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+          <span>Queue (<span id="cinema-queue-count">0</span>)</span>
+        </button>
         <button id="cinema-exit-btn" class="cinema-hud-pill glass-pill" title="Exit Cinema Mode (Esc)">
           <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
           <span>Exit Cinema</span>
@@ -123,6 +148,11 @@
             <span id="offset-val">0.00s</span>
             <button id="offset-plus" aria-label="Increase offset by 0.25s">+0.25s</button>
           </div>
+          <button id="header-queue-btn" class="glass-pill action-pill desktop-only" title="View Queue">
+            <svg viewBox="0 0 24 24" class="icon" style="width:14px;height:14px;margin-right:6px;"><path fill="currentColor" d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+            <span>Queue</span>
+            <span id="header-queue-count" class="queue-pill-count">0</span>
+          </button>
           <button id="immersion-btn" class="glass-pill action-pill desktop-only">Cinema Mode</button>
         </div>
       </header>
@@ -151,6 +181,10 @@
               </button>
               <button id="add-to-pl-btn" class="mini-round-btn" title="Add to Playlist" aria-label="Add to Playlist">
                 <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+              </button>
+              <button id="queue-toggle-btn" class="mini-round-btn" title="View Queue" aria-label="View Queue">
+                <svg viewBox="0 0 24 24"><path fill="currentColor" d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+                <span id="queue-badge" class="queue-mini-badge hidden">0</span>
               </button>
             </div>
           </div>
@@ -259,6 +293,60 @@
     </div>
   </div>
 
+  <!-- Queue Backdrop & Floating Drawer -->
+  <div id="queue-drawer-backdrop" class="queue-drawer-backdrop hidden"></div>
+  <aside id="queue-drawer" class="queue-drawer glass-panel hidden" aria-label="Music Queue">
+    <div class="queue-header">
+      <div class="queue-title-wrap">
+        <div class="queue-header-title">Play Queue</div>
+        <div id="queue-count-sub" class="queue-count-sub">0 tracks upcoming</div>
+      </div>
+      <div class="queue-header-actions">
+        <button id="queue-clear-btn" class="glass-pill queue-pill-btn" title="Clear upcoming tracks">Clear Queue</button>
+        <button id="queue-close-btn" class="icon-btn queue-close-btn" title="Close Queue">&times;</button>
+      </div>
+    </div>
+
+    <div class="queue-body">
+      <!-- Currently Playing Section -->
+      <div class="queue-section-label">Currently Playing</div>
+      <div id="queue-current-card" class="queue-current-card"></div>
+
+      <!-- Up Next Section -->
+      <div class="queue-section-header">
+        <div class="queue-section-label">Up Next</div>
+        <span id="queue-up-next-badge" class="queue-up-next-badge">0 tracks</span>
+      </div>
+
+      <div id="queue-up-next-list" class="queue-track-list"></div>
+    </div>
+  </aside>
+
+  <!-- Context Menu for Songs -->
+  <div id="context-menu" class="context-menu glass-panel hidden" role="menu">
+    <button class="context-menu-item" data-action="play-now">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+      <span>Play Now</span>
+    </button>
+    <button class="context-menu-item" data-action="play-next">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+      <span>Play Next</span>
+    </button>
+    <button class="context-menu-item" data-action="add-queue">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+      <span>Add to Queue</span>
+    </button>
+    <div class="context-menu-divider"></div>
+    <button class="context-menu-item" data-action="add-playlist">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M14 10H3v2h11v-2zm0-4H3v2h11V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3 16h7v-2H3v2z"/></svg>
+      <span>Add to Playlist</span>
+    </button>
+    <button class="context-menu-item hidden" data-action="remove-item">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      <span id="context-remove-text">Remove</span>
+    </button>
+  </div>
+
   <!-- Toast Notification -->
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
@@ -266,6 +354,6 @@
   <div id="yt-player-box" style="position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-999;"></div>
 
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script type="module" src="/js/app.js?v=11"></script>
+  <script type="module" src="/js/app.js?v=12"></script>
 </body>
 </html>

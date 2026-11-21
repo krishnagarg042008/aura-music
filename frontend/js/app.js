@@ -80,6 +80,34 @@ const modalCreateBtn = document.getElementById("modal-create-btn");
 const modalCloseBtn = document.getElementById("modal-close-btn");
 const toastEl = document.getElementById("toast");
 
+// Queue DOM & Context Menu DOM
+const tabQueue = document.getElementById("tab-queue");
+const tabQueueCount = document.getElementById("tab-queue-count");
+const queueSidebarPanel = document.getElementById("queue-sidebar-panel");
+const sidebarQueueSub = document.getElementById("sidebar-queue-sub");
+const sidebarQueueClearBtn = document.getElementById("sidebar-queue-clear-btn");
+const sidebarQueueCurrent = document.getElementById("sidebar-queue-current");
+const sidebarQueueUpNextBadge = document.getElementById("sidebar-queue-up-next-badge");
+const sidebarQueueList = document.getElementById("sidebar-queue-list");
+
+const headerQueueBtn = document.getElementById("header-queue-btn");
+const headerQueueCount = document.getElementById("header-queue-count");
+const queueToggleBtn = document.getElementById("queue-toggle-btn");
+const queueBadge = document.getElementById("queue-badge");
+const cinemaQueueBtn = document.getElementById("cinema-queue-btn");
+const cinemaQueueCount = document.getElementById("cinema-queue-count");
+
+const queueDrawer = document.getElementById("queue-drawer");
+const queueBackdrop = document.getElementById("queue-drawer-backdrop");
+const queueCloseBtn = document.getElementById("queue-close-btn");
+const queueClearBtn = document.getElementById("queue-clear-btn");
+const queueCountSub = document.getElementById("queue-count-sub");
+const queueCurrentCard = document.getElementById("queue-current-card");
+const queueUpNextBadge = document.getElementById("queue-up-next-badge");
+const queueUpNextList = document.getElementById("queue-up-next-list");
+
+const contextMenu = document.getElementById("context-menu");
+
 // Mobile Navigation & Mini-Player DOM
 const mobileNav = document.getElementById("mobile-nav");
 const mobileTabPlayer = document.getElementById("mobile-tab-player");
@@ -180,12 +208,16 @@ function initYouTubePlayer() {
             artContainer.classList.remove("playing");
             onPlaybackStateChanged(false);
           } else if (event.data === YT.PlayerState.ENDED) {
-            onPlaybackStateChanged(false);
-            if (currentIndex + 1 < queue.length) playTrack(currentIndex + 1);
+            handleTrackEnded();
           }
         },
         onError: (err) => {
           console.warn("YT Embed error:", err);
+          syncBadge.textContent = "PLAYBACK ERROR";
+          showToast("Track unavailable. Playing next in queue...");
+          setTimeout(() => {
+            if (currentIndex + 1 < queue.length) playTrack(currentIndex + 1);
+          }, 1500);
         }
       }
     });
@@ -341,6 +373,342 @@ function showToast(msg) {
   toastTimer = setTimeout(() => toastEl.classList.add("hidden"), 2400);
 }
 
+// ================= PLAY QUEUE & CONTEXT MENU ENGINE =================
+const QUEUE_KEY = "aura_queue_v1";
+const QUEUE_IDX_KEY = "aura_queue_idx_v1";
+
+let playNextCount = 0;
+let isTransitioningTrack = false;
+let activeContextTrack = null;
+let activeContextOptions = null;
+
+function saveQueueState() {
+  try {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    localStorage.setItem(QUEUE_IDX_KEY, String(currentIndex));
+  } catch (err) {
+    console.warn("Could not save queue:", err);
+  }
+}
+
+function loadQueueState() {
+  try {
+    const rawQueue = JSON.parse(localStorage.getItem(QUEUE_KEY) || "null");
+    const rawIdx = parseInt(localStorage.getItem(QUEUE_IDX_KEY) || "-1", 10);
+    if (Array.isArray(rawQueue) && rawQueue.length > 0) {
+      queue = rawQueue;
+      currentIndex = rawIdx >= 0 && rawIdx < rawQueue.length ? rawIdx : 0;
+      currentTrack = queue[currentIndex] || null;
+      if (currentTrack) {
+        trackTitleEl.textContent = currentTrack.title;
+        trackArtistEl.textContent = currentTrack.artist;
+        albumArt.src = currentTrack.thumbnail;
+        albumArt.classList.remove("hidden");
+        artPlaceholder.classList.add("hidden");
+        document.body.setAttribute("data-has-track", "true");
+        if (miniTitle) miniTitle.textContent = currentTrack.title;
+        if (miniArtist) miniArtist.textContent = currentTrack.artist;
+        if (miniAlbumArt) miniAlbumArt.src = currentTrack.thumbnail;
+        updateFavoriteButton();
+      }
+      return true;
+    }
+  } catch (err) {
+    console.warn("Could not load queue:", err);
+  }
+  return false;
+}
+
+function handleTrackEnded() {
+  if (isTransitioningTrack) return;
+  isTransitioningTrack = true;
+  setTimeout(() => { isTransitioningTrack = false; }, 800);
+
+  onPlaybackStateChanged(false);
+  if (currentIndex + 1 < queue.length) {
+    playTrack(currentIndex + 1);
+  } else {
+    // End of queue reached
+    playIcon.classList.remove("hidden");
+    pauseIcon.classList.add("hidden");
+    miniPlayIcon?.classList.remove("hidden");
+    miniPauseIcon?.classList.add("hidden");
+    artContainer.classList.remove("playing");
+    syncBadge.textContent = "IDLE";
+    renderQueue();
+  }
+}
+
+function addToQueue(track) {
+  if (!track || !track.videoId) return;
+  queue.push({ ...track });
+  saveQueueState();
+  renderQueue();
+  updateQueueBadges();
+  showToast("Added to queue");
+}
+
+function playNext(track) {
+  if (!track || !track.videoId) return;
+
+  if (currentIndex < 0 || queue.length === 0) {
+    // No track currently playing: insert at beginning
+    queue.splice(playNextCount, 0, { ...track });
+    playNextCount++;
+  } else {
+    // Insert immediately after currently playing song; if multiple, preserve selection order
+    const insertIdx = currentIndex + 1 + playNextCount;
+    queue.splice(insertIdx, 0, { ...track });
+    playNextCount++;
+  }
+
+  saveQueueState();
+  renderQueue();
+  updateQueueBadges();
+  showToast("Will play next");
+}
+
+function removeFromQueue(uIdx) {
+  const actualIdx = currentIndex + 1 + uIdx;
+  if (actualIdx >= 0 && actualIdx < queue.length) {
+    queue.splice(actualIdx, 1);
+    if (playNextCount > 0 && uIdx < playNextCount) {
+      playNextCount = Math.max(0, playNextCount - 1);
+    }
+    saveQueueState();
+    renderQueue();
+    updateQueueBadges();
+    showToast("Removed from queue");
+  }
+}
+
+function clearQueue() {
+  if (currentIndex >= 0 && currentIndex < queue.length) {
+    queue = [queue[currentIndex]];
+    currentIndex = 0;
+  } else {
+    queue = [];
+    currentIndex = -1;
+  }
+  playNextCount = 0;
+  saveQueueState();
+  renderQueue();
+  updateQueueBadges();
+  showToast("Queue cleared");
+}
+
+function reorderQueue(fromIdx, toIdx) {
+  const actualFrom = currentIndex + 1 + fromIdx;
+  const actualTo = currentIndex + 1 + toIdx;
+  if (actualFrom >= 0 && actualFrom < queue.length && actualTo >= 0 && actualTo < queue.length) {
+    const [moved] = queue.splice(actualFrom, 1);
+    queue.splice(actualTo, 0, moved);
+    saveQueueState();
+    renderQueue();
+    updateQueueBadges();
+  }
+}
+
+function updateQueueBadges() {
+  const upcomingCount = Math.max(0, queue.length - (currentIndex + 1));
+  const subText = `${upcomingCount} ${upcomingCount === 1 ? "track" : "tracks"} upcoming`;
+
+  if (queueCountSub) queueCountSub.textContent = subText;
+  if (sidebarQueueSub) sidebarQueueSub.textContent = subText;
+  if (queueUpNextBadge) queueUpNextBadge.textContent = `${upcomingCount} ${upcomingCount === 1 ? "track" : "tracks"}`;
+  if (sidebarQueueUpNextBadge) sidebarQueueUpNextBadge.textContent = `${upcomingCount} ${upcomingCount === 1 ? "track" : "tracks"}`;
+
+  if (queueBadge) {
+    queueBadge.textContent = String(upcomingCount);
+    queueBadge.classList.toggle("hidden", upcomingCount === 0);
+  }
+  if (headerQueueCount) headerQueueCount.textContent = String(upcomingCount);
+  if (cinemaQueueCount) cinemaQueueCount.textContent = String(upcomingCount);
+  if (tabQueueCount) tabQueueCount.textContent = String(upcomingCount);
+}
+
+function renderQueue() {
+  const upcomingTracks = queue.slice(currentIndex + 1);
+  const upcomingCount = upcomingTracks.length;
+
+  updateQueueBadges();
+
+  const currentCardContent = currentTrack
+    ? `
+      <div class="queue-current-thumb-wrap">
+        <img src="${escapeHtml(currentTrack.thumbnail)}" referrerpolicy="no-referrer" alt=""
+             onerror="this.onerror=null;this.src='https://i.ytimg.com/vi/${escapeHtml(currentTrack.videoId)}/hqdefault.jpg';" />
+        <div class="queue-current-eq"><span></span><span></span><span></span></div>
+      </div>
+      <div class="queue-current-info">
+        <div class="queue-current-title">${escapeHtml(currentTrack.title)}</div>
+        <div class="queue-current-artist">${escapeHtml(currentTrack.artist)}</div>
+      </div>
+      <span class="queue-current-dur">${escapeHtml(currentTrack.durationText || formatTime(currentTrack.duration))}</span>
+    `
+    : `<div class="queue-empty-now">No track currently playing</div>`;
+
+  if (queueCurrentCard) {
+    queueCurrentCard.innerHTML = currentCardContent;
+    queueCurrentCard.classList.toggle("playing", Boolean(currentTrack && artContainer.classList.contains("playing")));
+  }
+  if (sidebarQueueCurrent) {
+    sidebarQueueCurrent.innerHTML = currentCardContent;
+    sidebarQueueCurrent.classList.toggle("playing", Boolean(currentTrack && artContainer.classList.contains("playing")));
+  }
+
+  const renderUpcomingList = (containerEl) => {
+    if (!containerEl) return;
+    containerEl.innerHTML = "";
+
+    if (upcomingCount === 0) {
+      containerEl.innerHTML = `
+        <div class="queue-empty-state">
+          <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+          <p>Your queue is empty</p>
+          <span>Use "Play Next" or "Add to Queue" on any song to queue it up.</span>
+        </div>
+      `;
+      return;
+    }
+
+    upcomingTracks.forEach((t, uIdx) => {
+      const item = document.createElement("div");
+      item.className = "queue-item";
+      item.setAttribute("draggable", "true");
+      item.dataset.index = String(uIdx);
+
+      item.innerHTML = `
+        <div class="queue-drag-handle" title="Drag to reorder">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M9 18c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0-6c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0-6c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6 12c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0-6c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0-6c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/></svg>
+        </div>
+        <span class="queue-item-num">${uIdx + 1}</span>
+        <img class="queue-item-thumb" src="${escapeHtml(t.thumbnail)}" referrerpolicy="no-referrer" alt=""
+             onerror="this.onerror=null;this.src='https://i.ytimg.com/vi/${escapeHtml(t.videoId)}/hqdefault.jpg';" />
+        <div class="queue-item-info">
+          <div class="queue-item-title">${escapeHtml(t.title)}</div>
+          <div class="queue-item-artist">${escapeHtml(t.artist)}</div>
+        </div>
+        <span class="queue-item-dur">${escapeHtml(t.durationText || formatTime(t.duration))}</span>
+        <button class="queue-item-remove" title="Remove from queue" aria-label="Remove from queue">&times;</button>
+      `;
+
+      // Click to play immediately
+      item.addEventListener("click", (e) => {
+        if (e.target.closest(".queue-item-remove") || e.target.closest(".queue-drag-handle")) return;
+        const targetIdx = currentIndex + 1 + uIdx;
+        playTrack(targetIdx);
+      });
+
+      // Remove button
+      item.querySelector(".queue-item-remove").addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeFromQueue(uIdx);
+      });
+
+      // Context menu
+      item.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openContextMenu(e.clientX, e.clientY, t, { queueIndex: uIdx });
+      });
+
+      // Drag-and-drop reordering
+      item.addEventListener("dragstart", (e) => {
+        item.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(uIdx));
+      });
+
+      item.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        item.classList.add("drag-over");
+      });
+
+      item.addEventListener("dragleave", () => {
+        item.classList.remove("drag-over");
+      });
+
+      item.addEventListener("drop", (e) => {
+        e.preventDefault();
+        item.classList.remove("drag-over");
+        const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+        const toIdx = uIdx;
+        if (!isNaN(fromIdx) && !isNaN(toIdx) && fromIdx !== toIdx) {
+          reorderQueue(fromIdx, toIdx);
+        }
+      });
+
+      item.addEventListener("dragend", () => {
+        item.classList.remove("dragging");
+        containerEl.querySelectorAll(".queue-item").forEach(el => el.classList.remove("drag-over"));
+      });
+
+      containerEl.appendChild(item);
+    });
+  };
+
+  renderUpcomingList(queueUpNextList);
+  renderUpcomingList(sidebarQueueList);
+}
+
+function toggleQueueDrawer(show) {
+  if (!queueDrawer) return;
+  const isCurrentlyOpen = !queueDrawer.classList.contains("hidden");
+  const targetOpen = typeof show === "boolean" ? show : !isCurrentlyOpen;
+
+  if (targetOpen) {
+    renderQueue();
+    queueDrawer.classList.remove("hidden");
+    queueBackdrop?.classList.remove("hidden");
+    queueToggleBtn?.classList.add("active");
+    if (isCinemaMode) {
+      resetCinemaInactivity();
+    }
+  } else {
+    queueDrawer.classList.add("hidden");
+    queueBackdrop?.classList.add("hidden");
+    queueToggleBtn?.classList.remove("active");
+  }
+}
+
+function openContextMenu(x, y, track, options = {}) {
+  if (!contextMenu || !track) return;
+  activeContextTrack = track;
+  activeContextOptions = options;
+
+  const removeBtn = contextMenu.querySelector('[data-action="remove-item"]');
+  const removeText = document.getElementById("context-remove-text");
+
+  if (options.removable && options.playlistId) {
+    removeBtn?.classList.remove("hidden");
+    if (removeText) removeText.textContent = "Remove from Playlist";
+  } else if (options.queueIndex !== undefined) {
+    removeBtn?.classList.remove("hidden");
+    if (removeText) removeText.textContent = "Remove from Queue";
+  } else {
+    removeBtn?.classList.add("hidden");
+  }
+
+  contextMenu.classList.remove("hidden");
+
+  const menuWidth = contextMenu.offsetWidth || 195;
+  const menuHeight = contextMenu.offsetHeight || 190;
+  const posX = Math.max(10, Math.min(x, window.innerWidth - menuWidth - 12));
+  const posY = Math.max(10, Math.min(y, window.innerHeight - menuHeight - 12));
+
+  contextMenu.style.left = `${posX}px`;
+  contextMenu.style.top = `${posY}px`;
+}
+
+function closeContextMenu() {
+  if (!contextMenu) return;
+  contextMenu.classList.add("hidden");
+  activeContextTrack = null;
+  activeContextOptions = null;
+}
+
 function escapeHtml(str) {
   return String(str || "").replace(/[&<>"']/g, (m) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -438,12 +806,23 @@ function createTrackRow(track, idx, sourceList, options = {}) {
       <div class="track-item-artist">${escapeHtml(track.artist)}</div>
     </div>
     <span class="track-item-dur">${escapeHtml(track.durationText || formatTime(track.duration))}</span>
-    <button class="track-action-btn" title="${actionTitle}">${actionSymbol}</button>
+    <div class="track-actions-wrap">
+      <button class="track-action-btn" title="${actionTitle}">${actionSymbol}</button>
+      <button class="track-menu-btn" title="More options" aria-label="More options">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+      </button>
+    </div>
   `;
 
   row.addEventListener("click", () => {
     queue = [...sourceList];
     playTrack(idx);
+  });
+
+  row.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openContextMenu(e.clientX, e.clientY, track, { ...options, sourceList, index: idx });
   });
 
   row.querySelector(".track-action-btn").addEventListener("click", (e) => {
@@ -453,6 +832,12 @@ function createTrackRow(track, idx, sourceList, options = {}) {
     } else {
       openAddModal(track);
     }
+  });
+
+  row.querySelector(".track-menu-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    openContextMenu(rect.left - 130, rect.bottom + 6, track, { ...options, sourceList, index: idx });
   });
 
   return row;
@@ -475,6 +860,11 @@ async function playTrack(idx) {
   currentIndex = idx;
   const track = queue[idx];
   currentTrack = track;
+
+  playNextCount = 0;
+  saveQueueState();
+  renderQueue();
+  updateQueueBadges();
 
   isUsingYTPlayer = false;
   if (ytPlayer && ytPlayer.stopVideo) {
@@ -568,22 +958,27 @@ async function playTrack(idx) {
   }
 }
 
-// ================= PLAYLIST UI & LOGIC =================
+// ================= PLAYLIST & QUEUE SIDEBAR UI =================
 function switchTab(tab) {
-  const isDiscover = tab === "discover";
-  tabDiscover.classList.toggle("active", isDiscover);
-  tabPlaylists.classList.toggle("active", !isDiscover);
-  discoverPanel.classList.toggle("hidden", !isDiscover);
-  playlistsPanel.classList.toggle("hidden", isDiscover);
+  tabDiscover.classList.toggle("active", tab === "discover");
+  tabPlaylists.classList.toggle("active", tab === "playlists");
+  tabQueue?.classList.toggle("active", tab === "queue");
 
-  if (!isDiscover) {
+  discoverPanel.classList.toggle("hidden", tab !== "discover");
+  playlistsPanel.classList.toggle("hidden", tab !== "playlists");
+  queueSidebarPanel?.classList.toggle("hidden", tab !== "queue");
+
+  if (tab === "playlists") {
     if (openPlaylistId && getPlaylist(openPlaylistId)) renderPlaylistDetail(openPlaylistId);
     else renderPlaylistsHome();
+  } else if (tab === "queue") {
+    renderQueue();
   }
 }
 
 tabDiscover.addEventListener("click", () => switchTab("discover"));
 tabPlaylists.addEventListener("click", () => switchTab("playlists"));
+tabQueue?.addEventListener("click", () => switchTab("queue"));
 
 function renderPlaylistsHome() {
   openPlaylistId = null;
@@ -906,10 +1301,16 @@ playBtn.addEventListener("click", () => {
     }
     return;
   }
-  if (!audio.src && !isUsingYTPlayer && discoverTracks.length) {
-    queue = [...discoverTracks];
-    playTrack(0);
-    return;
+  if (!audio.src && !isUsingYTPlayer) {
+    if (queue.length > 0 && currentIndex >= 0 && currentIndex < queue.length) {
+      playTrack(currentIndex);
+      return;
+    }
+    if (discoverTracks.length) {
+      queue = [...discoverTracks];
+      playTrack(0);
+      return;
+    }
   }
   initWebAudio();
   if (audio.paused) audio.play();
@@ -930,7 +1331,11 @@ prevBtn.addEventListener("click", () => {
 });
 
 nextBtn.addEventListener("click", () => {
-  if (currentIndex + 1 < queue.length) playTrack(currentIndex + 1);
+  if (currentIndex + 1 < queue.length) {
+    playTrack(currentIndex + 1);
+  } else {
+    showToast("Reached end of queue");
+  }
 });
 
 audio.addEventListener("play", () => {
@@ -940,6 +1345,7 @@ audio.addEventListener("play", () => {
   miniPauseIcon?.classList.remove("hidden");
   artContainer.classList.add("playing");
   onPlaybackStateChanged(true);
+  renderQueue();
 });
 
 audio.addEventListener("pause", () => {
@@ -949,11 +1355,11 @@ audio.addEventListener("pause", () => {
   miniPauseIcon?.classList.add("hidden");
   artContainer.classList.remove("playing");
   onPlaybackStateChanged(false);
+  renderQueue();
 });
 
 audio.addEventListener("ended", () => {
-  onPlaybackStateChanged(false);
-  if (currentIndex + 1 < queue.length) playTrack(currentIndex + 1);
+  handleTrackEnded();
 });
 
 audio.addEventListener("error", (e) => {
@@ -1178,15 +1584,93 @@ cinemaFsBtn?.addEventListener("click", (e) => {
   toggleFullscreen();
 });
 
+cinemaQueueBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleQueueDrawer();
+});
+
+queueToggleBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleQueueDrawer();
+});
+
+headerQueueBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleQueueDrawer();
+});
+
+queueCloseBtn?.addEventListener("click", () => toggleQueueDrawer(false));
+queueBackdrop?.addEventListener("click", () => toggleQueueDrawer(false));
+
+queueClearBtn?.addEventListener("click", () => clearQueue());
+sidebarQueueClearBtn?.addEventListener("click", () => clearQueue());
+
+// Context Menu Action Listeners
+contextMenu?.addEventListener("click", (e) => {
+  const item = e.target.closest(".context-menu-item");
+  if (!item || !activeContextTrack) return;
+  const action = item.dataset.action;
+
+  if (action === "play-now") {
+    if (activeContextOptions?.sourceList && typeof activeContextOptions?.index === "number") {
+      queue = [...activeContextOptions.sourceList];
+      playTrack(activeContextOptions.index);
+    } else {
+      queue = [activeContextTrack];
+      playTrack(0);
+    }
+    closeContextMenu();
+  } else if (action === "play-next") {
+    playNext(activeContextTrack);
+    closeContextMenu();
+  } else if (action === "add-queue") {
+    addToQueue(activeContextTrack);
+    closeContextMenu();
+  } else if (action === "add-playlist") {
+    const tr = activeContextTrack;
+    closeContextMenu();
+    openAddModal(tr);
+  } else if (action === "remove-item") {
+    if (activeContextOptions?.removable && activeContextOptions?.playlistId) {
+      removeTrackFromPlaylist(activeContextOptions.playlistId, activeContextTrack.videoId);
+    } else if (activeContextOptions?.queueIndex !== undefined) {
+      removeFromQueue(activeContextOptions.queueIndex);
+    }
+    closeContextMenu();
+  }
+});
+
+window.addEventListener("click", (e) => {
+  if (contextMenu && !contextMenu.classList.contains("hidden")) {
+    if (!e.target.closest("#context-menu") && !e.target.closest(".track-menu-btn")) {
+      closeContextMenu();
+    }
+  }
+});
+
+window.addEventListener("scroll", closeContextMenu, { passive: true });
+
 window.addEventListener("keydown", (e) => {
   const tag = document.activeElement?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
-  if (isCinemaMode) {
-    resetCinemaInactivity();
-    if (e.key === "Escape" || e.code === "Escape") {
+
+  if (e.key === "Escape" || e.code === "Escape") {
+    if (contextMenu && !contextMenu.classList.contains("hidden")) {
+      closeContextMenu();
+      return;
+    }
+    if (queueDrawer && !queueDrawer.classList.contains("hidden")) {
+      toggleQueueDrawer(false);
+      return;
+    }
+    if (isCinemaMode) {
       exitCinemaMode(true);
       return;
     }
+  }
+
+  if (isCinemaMode) {
+    resetCinemaInactivity();
   }
   if (e.code === "Space") {
     e.preventDefault();
@@ -1353,5 +1837,8 @@ window.addEventListener("resize", () => {
   }
 });
 
+loadQueueState();
+renderQueue();
+updateQueueBadges();
 loadDiscover();
 requestAnimationFrame(mainLoop);
