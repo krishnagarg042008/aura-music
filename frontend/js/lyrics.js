@@ -1,11 +1,12 @@
 /**
  * AURA Lyrics Engine — word-by-word karaoke-style highlight with smooth fill.
  *
- * Changes over v1:
- *  - Wider pre-activation window (0.15 s) so words light up slightly ahead.
- *  - Smooth CSS fill transition via --fill custom property.
- *  - Handles unsynced lyrics (start === -1) gracefully (all visible, no scroll).
- *  - Auto-scroll centers the active line at ~36 % from the top of the viewport.
+ * Capabilities:
+ *  - High-precision word-level and line-level highlight.
+ *  - Handles instrumental pauses: when a line has ended and there is an interlude
+ *    before the next line, the previous line dims to past and no line is active.
+ *  - Handles unsynced plain lyrics gracefully (clean, readable text with smooth scrolling).
+ *  - Auto-scroll centers the active line at ~36% from the top of the viewport.
  */
 
 export class LyricsEngine {
@@ -110,12 +111,33 @@ export class LyricsEngine {
     if (!this.synced || !this.lines.length) return;
     const t = rawTime + this.offset;
 
-    // Find current active line (last line whose start ≤ t + small pre-window).
+    // Find candidate active line (last line whose start ≤ t + small pre-window).
     let nextActive = -1;
     for (let i = this.lines.length - 1; i >= 0; i--) {
       if (t >= this.lines[i].start - 0.12) {
         nextActive = i;
         break;
+      }
+    }
+
+    // Instrumental break check: if current line has ended and next line hasn't started yet
+    if (nextActive >= 0) {
+      const curLine = this.lines[nextActive];
+      const nextLine = nextActive + 1 < this.lines.length ? this.lines[nextActive + 1] : null;
+      if (t > curLine.end + 0.35 && (!nextLine || t < nextLine.start - 0.15)) {
+        // In interlude between lines: complete the previous line and clear active state
+        this.lineNodes.forEach((node, idx) => {
+          node.classList.remove("active");
+          node.classList.toggle("past", idx <= nextActive);
+          if (idx <= nextActive) {
+            this.wordNodes[idx].forEach((wn) => {
+              wn.style.setProperty("--fill", "100%");
+              wn.classList.remove("word-active");
+            });
+          }
+        });
+        this.activeLineIdx = -1;
+        return;
       }
     }
 

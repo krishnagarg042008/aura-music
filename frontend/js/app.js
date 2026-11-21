@@ -164,6 +164,60 @@ const lyricsEngine = new LyricsEngine(
   }
 );
 
+// Sync Offset Persistence & Management
+function loadTrackOffset(videoId) {
+  if (!videoId) return 0.0;
+  try {
+    const saved = localStorage.getItem("aura_sync_offset_" + videoId);
+    if (saved !== null) {
+      const val = parseFloat(saved);
+      if (!isNaN(val)) return Math.round(val * 100) / 100;
+    }
+  } catch {}
+  return 0.0;
+}
+
+function saveTrackOffset(videoId, offset) {
+  if (!videoId) return;
+  try {
+    const val = Math.round(offset * 100) / 100;
+    if (Math.abs(val) < 0.01) {
+      localStorage.removeItem("aura_sync_offset_" + videoId);
+    } else {
+      localStorage.setItem("aura_sync_offset_" + videoId, String(val));
+    }
+  } catch {}
+}
+
+function updateSyncUI(offset) {
+  if (!offsetVal) return;
+  const val = Math.round(offset * 100) / 100;
+  offsetVal.textContent = `${val >= 0 ? "+" : ""}${val.toFixed(2)}s`;
+  if (Math.abs(val) > 0.01) {
+    offsetVal.classList.add("offset-active");
+  } else {
+    offsetVal.classList.remove("offset-active");
+  }
+}
+
+function applyOffsetDelta(delta) {
+  const newOffset = lyricsEngine.setOffset(delta);
+  updateSyncUI(newOffset);
+  if (currentTrack?.videoId) {
+    saveTrackOffset(currentTrack.videoId, newOffset);
+    showToast(`Sync offset: ${newOffset >= 0 ? "+" : ""}${newOffset.toFixed(2)}s (saved for this track)`);
+  }
+}
+
+function resetOffset() {
+  lyricsEngine.resetOffset();
+  updateSyncUI(0.0);
+  if (currentTrack?.videoId) {
+    saveTrackOffset(currentTrack.videoId, 0.0);
+    showToast("Sync offset reset to 0.00s");
+  }
+}
+
 // Resilient YouTube Player Engine (Bypasses datacenter IP bot-check on Vercel/Cloud)
 let ytPlayer = null;
 let isUsingYTPlayer = false;
@@ -872,8 +926,9 @@ async function playTrack(idx) {
   }
 
   initWebAudio();
-  lyricsEngine.resetOffset();
-  offsetVal.textContent = "0.00s";
+  const savedOffset = loadTrackOffset(track.videoId);
+  lyricsEngine.offset = savedOffset;
+  updateSyncUI(savedOffset);
   highlightPlayingRows();
   updateFavoriteButton();
 
@@ -943,8 +998,6 @@ async function playTrack(idx) {
 
     if (meta.lyrics.word_native) {
       syncBadge.textContent = "WORD SYNC";
-    } else if (meta.lyrics.smart_sync) {
-      syncBadge.textContent = "SMART SYNC";
     } else if (meta.lyrics.synced) {
       syncBadge.textContent = "LRC SYNC";
     } else if (meta.lyrics.lines && meta.lyrics.lines.length) {
@@ -1408,20 +1461,15 @@ vibePills.addEventListener("click", (e) => {
   if (preset) applyVibe(preset, false);
 });
 
-offsetMinus.addEventListener("click", () => {
-  const val = lyricsEngine.setOffset(-0.25);
-  offsetVal.textContent = `${val >= 0 ? "+" : ""}${val.toFixed(2)}s`;
-});
-
-offsetPlus.addEventListener("click", () => {
-  const val = lyricsEngine.setOffset(0.25);
-  offsetVal.textContent = `${val >= 0 ? "+" : ""}${val.toFixed(2)}s`;
+document.querySelectorAll(".sync-step-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const delta = parseFloat(btn.dataset.delta);
+    if (!isNaN(delta)) applyOffsetDelta(delta);
+  });
 });
 
 offsetVal?.addEventListener("click", () => {
-  lyricsEngine.resetOffset();
-  offsetVal.textContent = "0.00s";
-  showToast("Sync offset reset to 0.00s");
+  resetOffset();
 });
 
 // ================= AUTOMATIC IMMERSIVE CINEMA MODE CONTROLLER =================
@@ -1688,11 +1736,14 @@ window.addEventListener("keydown", (e) => {
       audio.currentTime = Math.max(0, audio.currentTime - 5);
     }
   } else if (e.key === "[") {
-    const val = lyricsEngine.setOffset(-0.25);
-    offsetVal.textContent = `${val >= 0 ? "+" : ""}${val.toFixed(2)}s`;
+    e.preventDefault();
+    applyOffsetDelta(e.shiftKey ? -0.50 : -0.10);
   } else if (e.key === "]") {
-    const val = lyricsEngine.setOffset(0.25);
-    offsetVal.textContent = `${val >= 0 ? "+" : ""}${val.toFixed(2)}s`;
+    e.preventDefault();
+    applyOffsetDelta(e.shiftKey ? 0.50 : 0.10);
+  } else if (e.key === "\\") {
+    e.preventDefault();
+    resetOffset();
   }
 });
 

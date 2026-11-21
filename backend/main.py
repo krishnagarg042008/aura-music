@@ -370,7 +370,7 @@ async def get_track_meta(
     thumb: str = Query(""),
 ):
     client = get_http_client()
-    lyrics_task = fetch_synced_lyrics(client, title, artist, duration or None)
+    lyrics_task = fetch_synced_lyrics(client, title, artist, duration or None, video_id=video_id)
     palette_task = extract_palette(client, thumb)
     lyrics_data, palette = await asyncio.gather(lyrics_task, palette_task)
 
