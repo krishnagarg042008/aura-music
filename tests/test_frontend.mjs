@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildShuffledQueue, isLocalOrLanHostname, parseClientLrc } from "../frontend/js/lrc-utils.js";
+import {
+  buildShuffledQueue,
+  detectExternalMusicUrl,
+  isLocalOrLanHostname,
+  parseClientLrc,
+} from "../frontend/js/lrc-utils.js";
 import {
   detectIndicScript,
   hasIndicScript,
@@ -118,4 +123,18 @@ test("transliterateWords preserves 1:1 timestamps for karaoke sync", () => {
   );
   assert.equal(out[1].start, 11.2);
   assert.equal(out[3].end, 17.5);
+});
+
+test("detectExternalMusicUrl recognizes Spotify, Apple Music, and YouTube playlist URLs", () => {
+  assert.equal(detectExternalMusicUrl("https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b"), "spotify");
+  assert.equal(detectExternalMusicUrl("https://open.spotify.com/intl-en/playlist/37i9dQZF1DXcBWIGoYBM5M"), "spotify");
+  assert.equal(detectExternalMusicUrl("spotify:album:4yP0hdKOZPNshxUOjY0cZj"), "spotify");
+  assert.equal(detectExternalMusicUrl("https://spotify.link/abc123"), "spotify");
+
+  assert.equal(detectExternalMusicUrl("https://music.apple.com/in/album/after-hours/1499378108?i=1499378117"), "apple");
+  assert.equal(detectExternalMusicUrl("https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2"), "apple");
+
+  assert.equal(detectExternalMusicUrl("https://music.youtube.com/playlist?list=PL123456"), "youtube");
+  assert.equal(detectExternalMusicUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), null);
+  assert.equal(detectExternalMusicUrl("Blinding Lights The Weeknd"), null);
 });

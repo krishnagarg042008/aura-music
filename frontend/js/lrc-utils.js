@@ -178,3 +178,52 @@ export function buildShuffledQueue(queue, currentIndex, rng = Math.random) {
   }
   return { queue: rest, currentIndex: -1 };
 }
+
+/**
+ * Detect whether raw user input is a Spotify, Apple Music, or YouTube playlist link/URI.
+ * Returns "spotify" | "apple" | "youtube" | null.
+ */
+export function detectExternalMusicUrl(rawInput) {
+  const raw = String(rawInput || "").trim();
+  if (!raw) return null;
+
+  if (/^spotify:(?:track|album|playlist):[A-Za-z0-9]{10,40}$/i.test(raw)) {
+    return "spotify";
+  }
+
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    const host = u.hostname.toLowerCase().replace(/\.+$/, "");
+
+    if (
+      host === "open.spotify.com" ||
+      host === "play.spotify.com" ||
+      host === "spotify.link" ||
+      host === "spotify.app.link" ||
+      host === "spoti.fi"
+    ) {
+      return "spotify";
+    }
+
+    if (
+      host === "music.apple.com" ||
+      host === "geo.music.apple.com" ||
+      host === "itunes.apple.com" ||
+      host === "geo.itunes.apple.com" ||
+      host === "apple.co"
+    ) {
+      return "apple";
+    }
+
+    if (
+      (host === "youtube.com" || host === "www.youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") &&
+      Boolean(u.searchParams.get("list"))
+    ) {
+      return "youtube";
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}

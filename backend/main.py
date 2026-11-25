@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from ytmusicapi import YTMusic
 
 from backend.cache import BoundedTTLCache, SingleFlight
+from backend.importer import import_external_url
 from backend.lyrics_engine import fetch_synced_lyrics
 from backend.vibe_engine import (
     VIBE_PROFILES,
@@ -119,7 +120,7 @@ async def rate_limit_middleware(request: Request, call_next):
         client_ip = request.client.host if request.client else "unknown"
         if path.startswith("/api/stream/"):
             bucket, limit = "stream", 120
-        elif path.startswith("/api/playlist"):
+        elif path.startswith("/api/playlist") or path.startswith("/api/import"):
             bucket, limit = "playlist", 25
         else:
             bucket, limit = "api", 180
@@ -676,6 +677,19 @@ async def import_youtube_playlist(url: str = Query(..., min_length=2)):
         status_code=400,
         detail=f"YouTube blocked playlist '{playlist_id}'. Make sure its privacy is Public or Unlisted (not Private).",
     )
+
+
+@app.get("/api/import-external")
+async def import_external_music(url: str = Query(..., min_length=4)):
+    """Import tracks or songs from a public Spotify or Apple Music URL/URI and match on YouTube Music."""
+    client = get_http_client()
+    try:
+        return await import_external_url(client, ytmusic, _format_track, url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        print(f"[External Import Failed] url={url!r} | error={exc}")
+        raise HTTPException(status_code=502, detail="Could not import from that link right now. Please try again.")
 
 
 @app.api_route("/api/stream/{video_id}", methods=["GET", "HEAD"])

@@ -126,6 +126,40 @@ class TestApiEndpoints(unittest.TestCase):
         r_bad = self.client.get("/api/playlist?url=https://example.com/not-youtube")
         self.assertEqual(r_bad.status_code, 400)
 
+    def test_import_external_validates_urls_and_returns_matches(self):
+        r_bad = self.client.get("/api/import-external?url=https://evil.example/track/123")
+        self.assertEqual(r_bad.status_code, 400)
+
+        fake_payload = {
+            "provider": "spotify",
+            "kind": "track",
+            "title": "Blinding Lights",
+            "sourceTrack": {"title": "Blinding Lights", "artist": "The Weeknd", "duration": 200},
+            "totalSourceTracks": 1,
+            "matchedCount": 1,
+            "unmatchedTracks": [],
+            "results": [
+                {
+                    "videoId": "fHI8X4OXluQ",
+                    "title": "Blinding Lights",
+                    "artist": "The Weeknd",
+                    "album": "After Hours",
+                    "duration": 200,
+                    "durationText": "3:20",
+                    "thumbnail": "https://i.ytimg.com/vi/fHI8X4OXluQ/hqdefault.jpg",
+                }
+            ],
+        }
+        with patch("backend.main.import_external_url", AsyncMock(return_value=fake_payload)):
+            r_ok = self.client.get(
+                "/api/import-external",
+                params={"url": "https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b"},
+            )
+            self.assertEqual(r_ok.status_code, 200)
+            body = r_ok.json()
+            self.assertEqual(body["provider"], "spotify")
+            self.assertEqual(body["results"][0]["videoId"], "fHI8X4OXluQ")
+
     def test_sliding_window_rate_limiter(self):
         limiter = SlidingWindowRateLimiter(max_clients=4)
         self.assertTrue(limiter.allow("1.2.3.4", "playlist", limit=2, window_sec=60.0))

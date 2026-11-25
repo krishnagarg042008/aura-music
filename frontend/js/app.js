@@ -1,6 +1,6 @@
 import { VibeScene3D } from "./scene3d.js?v=18";
 import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js?v=17";
-import { buildShuffledQueue, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js";
+import { buildShuffledQueue, detectExternalMusicUrl, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js?v=19";
 
 const STORAGE_KEY = "aura_playlists_v1";
 const HISTORY_KEY = "aura_listen_history_v1";
@@ -40,6 +40,12 @@ const searchInput = document.getElementById("search-input");
 const clearSearchBtn = document.getElementById("clear-search");
 const listHeading = document.getElementById("list-heading");
 const trackListEl = document.getElementById("track-list");
+const extImportBanner = document.getElementById("external-import-banner");
+const extBannerBadge = document.getElementById("ext-banner-badge");
+const extBannerInfo = document.getElementById("ext-banner-info");
+const extPlayAllBtn = document.getElementById("ext-play-all-btn");
+const extQueueAllBtn = document.getElementById("ext-queue-all-btn");
+const extSavePlBtn = document.getElementById("ext-save-pl-btn");
 
 const albumArt = document.getElementById("album-art");
 const artPlaceholder = document.getElementById("art-placeholder");
@@ -960,6 +966,16 @@ function addToQueue(track) {
   showToast("Added to queue");
 }
 
+function addTracksToQueue(tracks) {
+  const valid = (tracks || []).filter((t) => t && t.videoId);
+  if (!valid.length) return;
+  valid.forEach((t) => queue.push({ ...t }));
+  saveQueueState();
+  renderQueue();
+  updateQueueBadges();
+  showToast(`Added ${valid.length} ${valid.length === 1 ? "track" : "tracks"} to queue`);
+}
+
 function playNext(track) {
   if (!track || !track.videoId) return;
   if (currentIndex < 0 || queue.length === 0) {
@@ -1565,18 +1581,13 @@ function createTrackRow(track, idx, sourceList, options = {}) {
   attachThumbFallback(row.querySelector("img"), track.videoId);
 
   row.addEventListener("click", () => {
-    unshuffledQueue = null;
-    if (prefs.shuffle) {
-      const clickedTrack = sourceList[idx];
-      const base = [...sourceList];
-      const rest = base.filter((_, i) => i !== idx);
-      const shuffled = buildShuffledQueue([clickedTrack, ...rest], 0);
-      queue = shuffled.queue;
+    if (options.queueOnlyClicked) {
+      unshuffledQueue = null;
+      queue = [{ ...track }];
       playTrack(0);
-    } else {
-      queue = [...sourceList];
-      playTrack(idx);
+      return;
     }
+    playTrackList(sourceList, idx);
   });
 
   row.addEventListener("contextmenu", (e) => {
@@ -1603,7 +1614,22 @@ function createTrackRow(track, idx, sourceList, options = {}) {
   return row;
 }
 
-function renderDiscoverList(tracks) {
+function playTrackList(tracks, startIdx = 0) {
+  if (!Array.isArray(tracks) || !tracks.length) return;
+  unshuffledQueue = null;
+  if (prefs.shuffle) {
+    const picked = tracks[startIdx] || tracks[0];
+    const rest = tracks.filter((_, i) => i !== startIdx);
+    const shuffled = buildShuffledQueue([picked, ...rest], 0);
+    queue = shuffled.queue;
+    playTrack(0);
+  } else {
+    queue = [...tracks];
+    playTrack(startIdx);
+  }
+}
+
+function renderDiscoverList(tracks, rowOptions = {}) {
   discoverTracks = tracks;
   trackListEl.innerHTML = "";
   if (!tracks.length) {
@@ -1611,7 +1637,7 @@ function renderDiscoverList(tracks) {
     return;
   }
   tracks.forEach((t, idx) => {
-    trackListEl.appendChild(createTrackRow(t, idx, discoverTracks));
+    trackListEl.appendChild(createTrackRow(t, idx, discoverTracks, rowOptions));
   });
 }
 
@@ -1948,9 +1974,116 @@ newPlaylistBtn.addEventListener("click", async () => {
   }
 });
 
+const PROVIDER_META = {
+  spotify: { label: "Spotify", badge: "SPOTIFY", cls: "spotify" },
+  apple: { label: "Apple Music", badge: "APPLE MUSIC", cls: "apple" },
+  youtube: { label: "YouTube", badge: "YOUTUBE", cls: "youtube" },
+};
+
+let activeExternalCollection = null;
+
+function getProviderMeta(provider) {
+  return PROVIDER_META[provider] || PROVIDER_META.youtube;
+}
+
+function hideExternalImportBanner() {
+  activeExternalCollection = null;
+  extImportBanner?.classList.add("hidden");
+}
+
+function showExternalImportBanner({ title, provider, tracks, matchedCount, totalSourceTracks }) {
+  if (!extImportBanner || !tracks?.length) return;
+  const meta = getProviderMeta(provider);
+  activeExternalCollection = { title: title || `${meta.label} Import`, provider, tracks };
+
+  if (extBannerBadge) {
+    extBannerBadge.textContent = meta.badge;
+    extBannerBadge.className = `ext-provider-badge ${meta.cls}`;
+  }
+  if (extBannerInfo) {
+    const countLabel =
+      totalSourceTracks && matchedCount !== undefined && matchedCount < totalSourceTracks
+        ? `${matchedCount}/${totalSourceTracks} matched`
+        : `${tracks.length} ${tracks.length === 1 ? "song" : "songs"}`;
+    extBannerInfo.textContent = `${title || meta.label} (${countLabel})`;
+  }
+  extImportBanner.classList.remove("hidden");
+}
+
+extPlayAllBtn?.addEventListener("click", () => {
+  if (!activeExternalCollection?.tracks?.length) return;
+  playTrackList(activeExternalCollection.tracks, 0);
+});
+
+extQueueAllBtn?.addEventListener("click", () => {
+  if (!activeExternalCollection?.tracks?.length) return;
+  addTracksToQueue(activeExternalCollection.tracks);
+});
+
+extSavePlBtn?.addEventListener("click", () => {
+  if (!activeExternalCollection?.tracks?.length) return;
+  const { title, tracks } = activeExternalCollection;
+  const pl = createPlaylist(title, tracks);
+  if (!pl) return;
+  switchTab("playlists");
+  renderPlaylistDetail(pl.id);
+  showToast(`Saved ${pl.tracks.length} songs to "${pl.name}"`);
+});
+
+async function fetchImportByUrl(url, provider) {
+  const endpoint =
+    provider === "spotify" || provider === "apple"
+      ? `/api/import-external?url=${encodeURIComponent(url)}`
+      : `/api/playlist?url=${encodeURIComponent(url)}`;
+  const res = await fetch(endpoint);
+  const rawText = await res.text();
+  let data = {};
+  try {
+    data = JSON.parse(rawText);
+  } catch {}
+  if (!res.ok) {
+    throw new Error(data.detail || `Server error (${res.status}).`);
+  }
+  return data;
+}
+
+function renderSingleImportMatchCard(containerEl, track, sourceLabel, sourceBadgeCls) {
+  containerEl.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "import-single-card";
+  card.innerHTML = `
+    <div class="import-single-head">
+      <img src="${escapeHtml(track.thumbnail)}" referrerpolicy="no-referrer" alt="" />
+      <div class="import-single-meta">
+        <div class="import-single-title">${escapeHtml(track.title)}</div>
+        <div class="import-single-artist">${escapeHtml(track.artist)}</div>
+      </div>
+      <span class="ext-provider-badge ${sourceBadgeCls}">${escapeHtml(sourceLabel)}</span>
+    </div>
+    <div class="ext-banner-actions">
+      <button type="button" class="ext-banner-btn primary" data-ext-action="play">Play</button>
+      <button type="button" class="ext-banner-btn" data-ext-action="queue">Queue</button>
+      <button type="button" class="ext-banner-btn" data-ext-action="playlist">+ Playlist</button>
+    </div>
+  `;
+  attachThumbFallback(card.querySelector("img"), track.videoId);
+
+  card.querySelector('[data-ext-action="play"]')?.addEventListener("click", () => {
+    playTrackList([track], 0);
+  });
+  card.querySelector('[data-ext-action="queue"]')?.addEventListener("click", () => {
+    addToQueue(track);
+  });
+  card.querySelector('[data-ext-action="playlist"]')?.addEventListener("click", () => {
+    openAddModal(track);
+  });
+  containerEl.appendChild(card);
+}
+
 toggleImportBtn.addEventListener("click", () => {
   importBox.classList.toggle("hidden");
   importStatus.classList.add("hidden");
+  importStatus.innerHTML = "";
   if (!importBox.classList.contains("hidden")) importUrlInput.focus();
 });
 
@@ -1958,28 +2091,45 @@ async function runPlaylistImport() {
   const url = importUrlInput.value.trim();
   if (!url) return;
 
+  const provider = detectExternalMusicUrl(url) || "youtube";
+  const meta = getProviderMeta(provider);
+
   importSubmitBtn.disabled = true;
-  importStatus.textContent = "Importing playlist from YouTube...";
+  importStatus.textContent =
+    provider === "youtube"
+      ? "Importing playlist from YouTube..."
+      : `Reading ${meta.label} link & matching on YouTube...`;
   importStatus.classList.remove("hidden");
 
   try {
-    const res = await fetch(`/api/playlist?url=${encodeURIComponent(url)}`);
-    const rawText = await res.text();
-    let data = {};
-    try { data = JSON.parse(rawText); } catch {}
+    const data = await fetchImportByUrl(url, provider);
+    const tracks = data.results || [];
 
-    if (!res.ok) {
-      throw new Error(data.detail || `Server error (${res.status}).`);
+    if (data.kind === "track") {
+      if (!tracks.length) {
+        throw new Error("Could not find a matching playable track on YouTube.");
+      }
+      const best = tracks[0];
+      renderSingleImportMatchCard(importStatus, best, meta.badge, meta.cls);
+      importUrlInput.value = "";
+      showToast(`Matched "${best.title}" from ${meta.label}`);
+      return;
     }
 
-    const pl = createPlaylist(data.title || "Imported Playlist", data.results || []);
+    const pl = createPlaylist(data.title || `${meta.label} Import`, tracks);
     importUrlInput.value = "";
     importBox.classList.add("hidden");
     importStatus.classList.add("hidden");
+    importStatus.innerHTML = "";
     renderPlaylistDetail(pl.id);
-    showToast(`Imported ${pl.tracks.length} songs into "${pl.name}"`);
+
+    if (data.totalSourceTracks && data.matchedCount < data.totalSourceTracks) {
+      showToast(`Imported ${data.matchedCount}/${data.totalSourceTracks} songs into "${pl.name}"`);
+    } else {
+      showToast(`Imported ${pl.tracks.length} songs into "${pl.name}"`);
+    }
   } catch (err) {
-    importStatus.textContent = err.message || "Could not import playlist.";
+    importStatus.textContent = err.message || "Could not import link.";
   } finally {
     importSubmitBtn.disabled = false;
   }
@@ -2190,38 +2340,77 @@ cardShareBtn?.addEventListener("click", async () => {
   } catch {}
 });
 
-// ================= SEARCH & TRENDING =================
+// ================= SEARCH, EXTERNAL URL & TRENDING =================
 let searchTimer = null;
 searchInput.addEventListener("input", () => {
   const q = searchInput.value.trim();
   clearSearchBtn.classList.toggle("hidden", !q);
   clearTimeout(searchTimer);
+  hideExternalImportBanner();
 
   if (!q) {
     loadDiscover();
     return;
   }
 
+  const provider = detectExternalMusicUrl(q);
+  const delayMs = provider ? 140 : 420;
+
   searchTimer = setTimeout(async () => {
+    if (provider) {
+      const meta = getProviderMeta(provider);
+      listHeading.textContent = `Resolving ${meta.label} Link...`;
+      trackListEl.innerHTML = `<div class="skeleton-loader">Reading ${meta.label} link &amp; matching on YouTube...</div>`;
+      try {
+        const data = await fetchImportByUrl(q, provider);
+        if (searchInput.value.trim() !== q) return;
+        const tracks = data.results || [];
+        if (data.kind === "track") {
+          const srcLabel = data.sourceTrack?.title || data.title || "Track";
+          listHeading.textContent = `${meta.label}: ${srcLabel}`;
+          renderDiscoverList(tracks, { queueOnlyClicked: true });
+        } else {
+          const colTitle = data.title || `${meta.label} Import`;
+          listHeading.textContent = `${meta.label}: ${colTitle}`;
+          showExternalImportBanner({
+            title: colTitle,
+            provider,
+            tracks,
+            matchedCount: data.matchedCount ?? tracks.length,
+            totalSourceTracks: data.totalSourceTracks ?? tracks.length,
+          });
+          renderDiscoverList(tracks);
+        }
+      } catch (err) {
+        if (searchInput.value.trim() !== q) return;
+        listHeading.textContent = `${meta.label} Import Error`;
+        trackListEl.innerHTML = `<div class="skeleton-loader">${escapeHtml(err.message || "Could not resolve that link.")}</div>`;
+      }
+      return;
+    }
+
     listHeading.textContent = `YouTube Results for "${q}"`;
     trackListEl.innerHTML = `<div class="skeleton-loader">Searching YouTube...</div>`;
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
+      if (searchInput.value.trim() !== q) return;
       renderDiscoverList(data.results || []);
     } catch {
       trackListEl.innerHTML = `<div class="skeleton-loader">Search failed. Check backend server.</div>`;
     }
-  }, 420);
+  }, delayMs);
 });
 
 clearSearchBtn.addEventListener("click", () => {
   searchInput.value = "";
   clearSearchBtn.classList.add("hidden");
+  hideExternalImportBanner();
   loadDiscover();
 });
 
 async function loadDiscover() {
+  hideExternalImportBanner();
   if (hasListeningHistory()) {
     listHeading.textContent = "Recommended For You";
     trackListEl.innerHTML = `<div class="skeleton-loader">Finding songs you'll love...</div>`;
