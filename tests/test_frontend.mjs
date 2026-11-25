@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildShuffledQueue, isLocalOrLanHostname, parseClientLrc } from "../frontend/js/lrc-utils.js";
+import {
+  detectIndicScript,
+  hasIndicScript,
+  transliterateLine,
+  transliterateWords,
+} from "../frontend/js/transliterate.js";
 
 test("parseClientLrc parses standard LRC and skips metadata headers", () => {
   const raw = [
@@ -65,4 +71,51 @@ test("buildShuffledQueue keeps current track first and preserves all tracks", ()
     queue.map((t) => t.videoId).sort(),
     ["a", "b", "c", "d"]
   );
+});
+
+test("detectIndicScript identifies Devanagari, Gurmukhi, and mixed lyrics", () => {
+  assert.deepEqual(detectIndicScript(["मुझको इतना बताए कोई"]), {
+    hasDevanagari: true,
+    hasGurmukhi: false,
+    hasIndic: true,
+    label: "Hindi",
+  });
+  assert.deepEqual(detectIndicScript(["ਦੱਸ ਪੁੱਤ, ਤੇਰਾ head down ਕਾਸਤੋਂ?"]), {
+    hasDevanagari: false,
+    hasGurmukhi: true,
+    hasIndic: true,
+    label: "Punjabi",
+  });
+  assert.deepEqual(detectIndicScript(["ਤੇਰੀ-ਮੇਰੀ ਗੱਲਾਂ", "कर ना कभी तू"]), {
+    hasDevanagari: true,
+    hasGurmukhi: true,
+    hasIndic: true,
+    label: "Hindi & Punjabi",
+  });
+  assert.equal(hasIndicScript("Midnight neon sky"), false);
+});
+
+test("transliterateLine converts Hindi Devanagari and Punjabi Gurmukhi into clean Hinglish", () => {
+  assert.equal(transliterateLine("मुझको इतना बताए कोई"), "Mujhko itna bataaye koi");
+  assert.equal(transliterateLine("केसरिया तेरा इश्क़ है, पिया"), "Kesariya tera ishq hai, piya");
+  assert.equal(transliterateLine("अच्छा धड़कन ज़िंदगी हमसफ़र अजनबी मतलब"), "Achchha dhadkan zindagi hamsafar ajnabi matlab");
+  assert.equal(transliterateLine("ਦੱਸ ਪੁੱਤ, ਤੇਰਾ head down ਕਾਸਤੋਂ?"), "Dass putt, tera head down kaaston?");
+  assert.equal(transliterateLine("ਕਿੱਥੇ ਚੱਲੀਏ? ਤੂੰ ਕਿੱਥੇ ਚੱਲੀਏ?"), "Kitthe challiye? Tu kitthe challiye?");
+  assert.equal(transliterateLine("ਤੇਰੀ-ਮੇਰੀ ਗੱਲਾਂ ਹੋ ਗਈ ਮਸ਼ਹੂਰ"), "Teri-meri gallan ho gayi mashhoor");
+});
+
+test("transliterateWords preserves 1:1 timestamps for karaoke sync", () => {
+  const input = [
+    { text: "मुझको", start: 9.44, end: 11.2 },
+    { text: "इतना", start: 11.2, end: 13.0 },
+    { text: "बताए", start: 13.0, end: 15.1 },
+    { text: "कोई?", start: 15.1, end: 17.5 },
+  ];
+  const out = transliterateWords(input);
+  assert.deepEqual(
+    out.map((w) => w.text),
+    ["Mujhko", "itna", "bataaye", "koi?"]
+  );
+  assert.equal(out[1].start, 11.2);
+  assert.equal(out[3].end, 17.5);
 });

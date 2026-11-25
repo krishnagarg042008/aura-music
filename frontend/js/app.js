@@ -1,5 +1,5 @@
 import { VibeScene3D } from "./scene3d.js?v=16";
-import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js";
+import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js?v=17";
 import { buildShuffledQueue, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js";
 
 const STORAGE_KEY = "aura_playlists_v1";
@@ -7,6 +7,7 @@ const HISTORY_KEY = "aura_listen_history_v1";
 const QUEUE_KEY = "aura_queue_v1";
 const QUEUE_IDX_KEY = "aura_queue_idx_v1";
 const PREFS_KEY = "aura_prefs_v1";
+const SCRIPT_MODE_KEY = "aura_lyrics_script_mode_v1";
 
 const VIBE_PRESETS = {
   chill: { id: "chill", label: "Liquid Chill", geometry: "aurora_orb", particle_mode: "float", speed: 0.45, turbulence: 0.65, default_colors: ["#1e3a5f", "#4fd1c5", "#81e6d9"] },
@@ -120,6 +121,7 @@ const eqBandSliders = Array.from(document.querySelectorAll("#eq-bands input[type
 const eqNormalizeToggle = document.getElementById("eq-normalize-toggle");
 const crossfadePills = document.getElementById("crossfade-pills");
 
+const scriptToggleBtn = document.getElementById("script-toggle-btn");
 const pasteLrcBtn = document.getElementById("paste-lrc-btn");
 const lyricCardBtn = document.getElementById("lyric-card-btn");
 const lyricCardBar = document.getElementById("lyric-card-bar");
@@ -376,6 +378,46 @@ function resetOffset() {
   if (currentTrack?.videoId) {
     saveTrackOffset(currentTrack.videoId, 0.0);
     showToast("Sync offset reset to 0.00s");
+  }
+}
+
+let lyricsScriptMode = (() => {
+  try {
+    const saved = localStorage.getItem(SCRIPT_MODE_KEY);
+    return ["original", "roman", "dual"].includes(saved) ? saved : "original";
+  } catch {
+    return "original";
+  }
+})();
+
+function saveScriptMode(mode) {
+  lyricsScriptMode = mode;
+  try {
+    localStorage.setItem(SCRIPT_MODE_KEY, mode);
+  } catch {}
+}
+
+function updateScriptToggleUI(scriptInfo, mode) {
+  if (!scriptToggleBtn) return;
+  if (!scriptInfo?.hasIndic) {
+    scriptToggleBtn.classList.add("hidden");
+    scriptToggleBtn.classList.remove("active");
+    return;
+  }
+  scriptToggleBtn.classList.remove("hidden");
+  const langLabel = scriptInfo.label || "Indic";
+  if (mode === "roman") {
+    scriptToggleBtn.textContent = "Hinglish ✓";
+    scriptToggleBtn.classList.add("active");
+    scriptToggleBtn.title = `${langLabel} transliterated to Hinglish — click for Dual-Script`;
+  } else if (mode === "dual") {
+    scriptToggleBtn.textContent = "Dual Script";
+    scriptToggleBtn.classList.add("active");
+    scriptToggleBtn.title = `Dual-Script (${langLabel} + Hinglish) — click for Original`;
+  } else {
+    scriptToggleBtn.textContent = "Hinglish";
+    scriptToggleBtn.classList.remove("active");
+    scriptToggleBtn.title = `${langLabel} detected — click to transliterate to Hinglish`;
   }
 }
 
@@ -1497,6 +1539,7 @@ function renderDiscoverList(tracks) {
 
 async function loadTrackMetadata(track) {
   const customRaw = loadCustomLrc(track.videoId);
+  if (!customRaw) updateScriptToggleUI(null, "original");
   try {
     const params = new URLSearchParams({
       title: track.title,
@@ -1513,10 +1556,12 @@ async function loadTrackMetadata(track) {
 
     if (customRaw) {
       const parsedCustom = parseClientLrc(customRaw, track.duration || 240);
-      lyricsEngine.load(parsedCustom);
+      const scriptInfo = lyricsEngine.load(parsedCustom, lyricsScriptMode);
+      updateScriptToggleUI(scriptInfo, lyricsEngine.scriptMode);
       syncBadge.textContent = parsedCustom.synced ? "CUSTOM LRC" : "CUSTOM";
     } else {
-      lyricsEngine.load(meta.lyrics);
+      const scriptInfo = lyricsEngine.load(meta.lyrics, lyricsScriptMode);
+      updateScriptToggleUI(scriptInfo, lyricsEngine.scriptMode);
       if (meta.lyrics.word_native) syncBadge.textContent = "WORD SYNC";
       else if (meta.lyrics.synced) syncBadge.textContent = "LRC SYNC";
       else if (meta.lyrics.lines?.length) syncBadge.textContent = "PLAIN";
@@ -1526,9 +1571,11 @@ async function loadTrackMetadata(track) {
     console.error("Metadata error:", err);
     if (customRaw && currentTrack?.videoId === track.videoId) {
       const parsedCustom = parseClientLrc(customRaw, track.duration || 240);
-      lyricsEngine.load(parsedCustom);
+      const scriptInfo = lyricsEngine.load(parsedCustom, lyricsScriptMode);
+      updateScriptToggleUI(scriptInfo, lyricsEngine.scriptMode);
       syncBadge.textContent = parsedCustom.synced ? "CUSTOM LRC" : "CUSTOM";
     } else {
+      updateScriptToggleUI(null, "original");
       syncBadge.textContent = "AUDIO ONLY";
     }
   }
@@ -1936,9 +1983,21 @@ favBtn.addEventListener("click", () => {
 
 addToPlBtn.addEventListener("click", () => openAddModal(currentTrack));
 
-// ================= CUSTOM LRC & LYRIC QUOTE CARDS =================
+// ================= CUSTOM LRC, SCRIPT TOGGLE & LYRIC QUOTE CARDS =================
 let generatedCardBlob = null;
 let generatedCardUrl = null;
+
+scriptToggleBtn?.addEventListener("click", () => {
+  if (!lyricsEngine.scriptInfo?.hasIndic) return;
+  const order = ["original", "roman", "dual"];
+  const next = order[(order.indexOf(lyricsEngine.scriptMode) + 1) % order.length];
+  saveScriptMode(next);
+  const info = lyricsEngine.setScriptMode(next, getCurrentPlaybackTime());
+  updateScriptToggleUI(info, next);
+  if (next === "roman") showToast("Hinglish romanized lyrics enabled");
+  else if (next === "dual") showToast("Dual-Script display enabled");
+  else showToast(`Original ${info.label || "script"} lyrics restored`);
+});
 
 pasteLrcBtn?.addEventListener("click", () => {
   if (!currentTrack) {
@@ -1964,7 +2023,8 @@ lrcSaveBtn?.addEventListener("click", () => {
   }
   saveCustomLrc(currentTrack.videoId, raw);
   const parsed = parseClientLrc(raw, currentTrack.duration || 240);
-  lyricsEngine.load(parsed);
+  const scriptInfo = lyricsEngine.load(parsed, lyricsScriptMode);
+  updateScriptToggleUI(scriptInfo, lyricsEngine.scriptMode);
   syncBadge.textContent = parsed.synced ? "CUSTOM LRC" : "CUSTOM";
   lrcModal?.classList.add("hidden");
   showToast(parsed.synced ? "Custom synced LRC applied" : "Custom plain lyrics applied");

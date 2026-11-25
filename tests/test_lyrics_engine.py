@@ -3,7 +3,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.lyrics_engine import (
     LYRICS_CACHE,
+    _split_artist_candidates,
     clean_track_title,
+    detect_indic_script,
     fetch_synced_lyrics,
     is_valid_match,
     parse_lrc,
@@ -21,6 +23,59 @@ class TestLyricsCleaningAndValidation(unittest.TestCase):
             clean_track_title("Starboy [4K Remaster] feat. Daft Punk"),
             "Starboy",
         )
+        self.assertEqual(
+            clean_track_title("O Maahi (Lyrical Video) | Dunki | Arijit Singh | T-Series"),
+            "O Maahi",
+        )
+        self.assertEqual(
+            clean_track_title("3 Peg - Full Video - Speed Records"),
+            "3 Peg",
+        )
+        self.assertEqual(
+            clean_track_title("Kesariya Full Song Sony Music India"),
+            "Kesariya",
+        )
+        # Preserve legitimate words inside real titles
+        self.assertEqual(
+            clean_track_title("Video Games (Remastered)"),
+            "Video Games",
+        )
+
+    def test_split_artist_candidates_and_label_filtering(self):
+        self.assertEqual(
+            _split_artist_candidates("Pritam, Arijit Singh, Amitabh Bhattacharya"),
+            ["Pritam", "Arijit Singh", "Amitabh Bhattacharya"],
+        )
+        self.assertEqual(
+            _split_artist_candidates("Sharry Maan; Mista Baaz; Ravi Raj"),
+            ["Sharry Maan", "Mista Baaz", "Ravi Raj"],
+        )
+        self.assertEqual(
+            _split_artist_candidates("DEVI SRI PRASAD (DSP)"),
+            ["DEVI SRI PRASAD", "DSP"],
+        )
+        self.assertEqual(
+            _split_artist_candidates("T-Series"),
+            [],
+        )
+
+    def test_detect_indic_script(self):
+        self.assertEqual(detect_indic_script("मुझको इतना बताए कोई"), "devanagari")
+        self.assertEqual(detect_indic_script("ਦੱਸ ਪੁੱਤ, ਤੇਰਾ head down ਕਾਸਤੋਂ?"), "gurmukhi")
+        self.assertEqual(detect_indic_script("ਤੇਰੀ-ਮੇਰੀ ਗੱਲਾਂ\nकर ना कभी तू"), "mixed")
+        self.assertEqual(detect_indic_script("I'm tryna put you in the worst mood"), "latin")
+
+    def test_is_valid_match_accepts_alternate_artist_splits(self):
+        ok, score = is_valid_match(
+            query_title="Kesariya (Full Video) | Sony Music India",
+            query_artist="Pritam, Arijit Singh",
+            cand_title="Kesariya",
+            cand_artist="Arijit Singh",
+            query_dur=268,
+            cand_dur=268,
+        )
+        self.assertTrue(ok)
+        self.assertGreater(score, 0.8)
 
     def test_is_valid_match_rejects_different_artist_and_duration(self):
         ok, _ = is_valid_match(
@@ -179,6 +234,37 @@ class TestFetchSyncedLyrics(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(res["synced"])
         self.assertEqual([l["text"] for l in res["lines"]], ["Line one", "Line two"])
+
+    async def test_fetch_synced_lyrics_retries_alternate_artist_split_and_detects_indic(self):
+        resp_404 = MagicMock()
+        resp_404.status_code = 404
+        resp_404.json.return_value = {}
+
+        resp_arijit = MagicMock()
+        resp_arijit.status_code = 200
+        resp_arijit.json.return_value = {
+            "syncedLyrics": "[00:09.44] मुझको इतना बताए कोई\n[00:19.02] कैसे तुझसे दिल ना लगाए कोई?",
+            "plainLyrics": "मुझको इतना बताए कोई\nकैसे तुझसे दिल ना लगाए कोई?",
+        }
+
+        async def mock_get(url, params=None, **kwargs):
+            if url.endswith("/api/get") and params and params.get("artist_name") == "Arijit Singh":
+                return resp_arijit
+            return resp_404
+
+        client = MagicMock()
+        client.get = AsyncMock(side_effect=mock_get)
+
+        res = await fetch_synced_lyrics(
+            client,
+            "Kesariya (Full Video) | Brahmāstra | Sony Music India",
+            "Pritam, Arijit Singh",
+            268,
+            video_id="BddP6PYo2gs",
+        )
+        self.assertTrue(res["synced"])
+        self.assertEqual(res["script"], "devanagari")
+        self.assertEqual(res["lines"][0]["text"], "मुझको इतना बताए कोई")
 
 
 if __name__ == "__main__":

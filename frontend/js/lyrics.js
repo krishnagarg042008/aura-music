@@ -1,7 +1,10 @@
 /**
  * AURA Lyrics Engine — word-by-word karaoke-style highlight with smooth fill,
- * interlude throttling, lyric selection mode, and PNG quote card generation.
+ * interlude throttling, Dual-Script / Romanized Hinglish display,
+ * lyric selection mode, and PNG quote card generation.
  */
+
+import { detectIndicScript, hasIndicScript, transliterateLine, transliterateWords } from "./transliterate.js";
 
 export class LyricsEngine {
   constructor(viewportEl, containerEl, onSeek, onSelectionChange = null) {
@@ -13,6 +16,7 @@ export class LyricsEngine {
     this.lines = [];
     this.lineNodes = [];
     this.wordNodes = [];
+    this.sublineNodes = [];
     this.wordLastFill = [];
     this.synced = false;
     this.wordNative = false;
@@ -20,6 +24,10 @@ export class LyricsEngine {
     this.offset = 0.0;
     this.userScrolling = false;
     this.scrollTimer = null;
+
+    // Dual-Script / Romanization state ("original" | "roman" | "dual")
+    this.scriptMode = "original";
+    this.scriptInfo = { hasDevanagari: false, hasGurmukhi: false, hasIndic: false, label: "" };
 
     // Lyric card selection state
     this.selectionMode = false;
@@ -59,7 +67,16 @@ export class LyricsEngine {
   getSelectedLines() {
     return Array.from(this.selectedLineIndices)
       .sort((a, b) => a - b)
-      .map((i) => this.lines[i]?.text)
+      .map((i) => {
+        const ln = this.lines[i];
+        if (!ln) return "";
+        if (!this.scriptInfo.hasIndic || this.scriptMode === "original") return ln.text;
+        if (this.scriptMode === "roman") return ln.romanText || ln.text;
+        if (this.scriptMode === "dual" && ln.romanText && ln.romanText !== ln.text) {
+          return `${ln.text}\n${ln.romanText}`;
+        }
+        return ln.text;
+      })
       .filter(Boolean);
   }
 
@@ -83,24 +100,77 @@ export class LyricsEngine {
     this.onSelectionChange?.(this.getSelectedLines());
   }
 
-  load(lyricsData) {
-    this.lines = lyricsData?.lines || [];
+  setScriptMode(mode, currentTime = 0) {
+    const valid = ["original", "roman", "dual"].includes(mode) ? mode : "original";
+    this.scriptMode = this.scriptInfo.hasIndic ? valid : "original";
+    if (!this.lines.length) return this.scriptInfo;
+
+    const prevScrollRatio = this.viewport.scrollTop;
+    this._renderLines();
+
+    // Restore current playback highlight immediately if synced
+    this.activeLineIdx = -1;
+    if (this.synced) {
+      this.update(currentTime);
+    } else {
+      this.viewport.scrollTop = prevScrollRatio;
+    }
+
+    // Re-apply active selection highlights cleanly
+    if (this.selectionMode) {
+      this.selectedLineIndices.forEach((idx) => {
+        this.lineNodes[idx]?.classList.add("selected-for-card");
+      });
+      this.onSelectionChange?.(this.getSelectedLines());
+    }
+    return this.scriptInfo;
+  }
+
+  load(lyricsData, preferredScriptMode = this.scriptMode) {
+    const rawLines = lyricsData?.lines || [];
     this.synced = Boolean(lyricsData?.synced);
     this.wordNative = Boolean(lyricsData?.word_native);
+    this.scriptInfo = detectIndicScript(rawLines);
+    const validPref = ["original", "roman", "dual"].includes(preferredScriptMode) ? preferredScriptMode : "original";
+    this.scriptMode = this.scriptInfo.hasIndic ? validPref : "original";
+
+    this.lines = rawLines.map((line) => {
+      const text = String(line?.text || "");
+      const words = Array.isArray(line?.words) ? line.words : [];
+      const lineHasIndic = this.scriptInfo.hasIndic && hasIndicScript(text);
+      return {
+        ...line,
+        hasIndic: lineHasIndic,
+        romanText: lineHasIndic ? transliterateLine(text) : text,
+        romanWords: lineHasIndic
+          ? (words.length ? transliterateWords(words) : [])
+          : words,
+      };
+    });
+
     this.activeLineIdx = -1;
-    this.lineNodes = [];
-    this.wordNodes = [];
-    this.wordLastFill = [];
     this.userScrolling = false;
     this.selectedLineIndices.clear();
-    this.container.innerHTML = "";
     this.onSelectionChange?.([]);
+    this._renderLines();
+    this.viewport.scrollTop = 0;
+    return this.scriptInfo;
+  }
+
+  _renderLines() {
+    this.lineNodes = [];
+    this.wordNodes = [];
+    this.sublineNodes = [];
+    this.wordLastFill = [];
+    this.container.innerHTML = "";
 
     if (!this.lines.length) {
       this.container.innerHTML = `<p class="lyrics-empty">No lyrics found for this track — paste custom LRC or enjoy the spatial visualizer.</p>`;
       return;
     }
 
+    const useRomanPrimary = this.scriptInfo.hasIndic && this.scriptMode === "roman";
+    const useDualSubline = this.scriptInfo.hasIndic && this.scriptMode === "dual";
     const frag = document.createDocumentFragment();
 
     this.lines.forEach((line, idx) => {
@@ -111,9 +181,11 @@ export class LyricsEngine {
         p.style.opacity = "0.85";
       }
 
+      const activeWords = useRomanPrimary ? (line.romanWords || line.words || []) : (line.words || []);
       const wNodes = [];
       const wFills = [];
-      (line.words || []).forEach((w) => {
+
+      activeWords.forEach((w) => {
         const span = document.createElement("span");
         span.className = "lyric-word";
         span.textContent = w.text;
@@ -126,6 +198,14 @@ export class LyricsEngine {
         p.appendChild(span);
         wNodes.push(span);
       });
+
+      let subEl = null;
+      if (useDualSubline && line.hasIndic && line.romanText && line.romanText !== line.text) {
+        subEl = document.createElement("div");
+        subEl.className = "lyric-subline";
+        subEl.textContent = line.romanText;
+        p.appendChild(subEl);
+      }
 
       p.addEventListener("click", () => {
         if (this.selectionMode) {
@@ -141,11 +221,11 @@ export class LyricsEngine {
       frag.appendChild(p);
       this.lineNodes.push(p);
       this.wordNodes.push(wNodes);
+      this.sublineNodes.push(subEl);
       this.wordLastFill.push(wFills);
     });
 
     this.container.appendChild(frag);
-    this.viewport.scrollTop = 0;
   }
 
   _setWordFill(lineIdx, wordIdx, pct) {
@@ -344,16 +424,20 @@ export async function renderLyricCardBlob({ lines, title, artist, thumbUrl, colo
   ctx.font = "500 28px Inter, system-ui, sans-serif";
   ctx.fillText(truncateText(ctx, artist || "", maxMetaW), headerX + artSize + 30, headerY + 100);
 
-  // Lyric lines wrapped nicely
+  // Lyric lines wrapped nicely (supports dual-script lines separated by \n)
   ctx.fillStyle = "#ffffff";
   const quoteLines = [];
-  const quoteFontSize = lines.length <= 2 ? 56 : 46;
+  const quoteFontSize = lines.length <= 2 ? 52 : 42;
   ctx.font = `700 ${quoteFontSize}px "Space Grotesk", Inter, sans-serif`;
   const textMaxW = cardW - 128;
 
   for (const raw of lines) {
-    const wrapped = wrapCanvasText(ctx, raw, textMaxW);
-    quoteLines.push(...wrapped, "");
+    const subParts = String(raw || "").split("\n");
+    for (const part of subParts) {
+      const wrapped = wrapCanvasText(ctx, part, textMaxW);
+      quoteLines.push(...wrapped);
+    }
+    quoteLines.push("");
   }
   if (quoteLines[quoteLines.length - 1] === "") quoteLines.pop();
 

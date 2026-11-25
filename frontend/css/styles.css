@@ -2896,6 +2896,34 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
   border-color: var(--accent-2);
 }
 
+.lyrics-tool-pill.active {
+  color: #7dd3fc;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.28);
+}
+
+.lyric-subline {
+  flex-basis: 100%;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.46em;
+  font-weight: 500;
+  font-style: normal;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.56);
+  margin-top: 4px;
+  transition: color 0.35s ease, opacity 0.35s ease;
+}
+
+.lyric-line.active .lyric-subline {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.app-shell.cinema-mode .lyric-subline {
+  font-size: 0.4em;
+  margin-top: 6px;
+}
+
 .lyric-card-bar {
   position: absolute;
   bottom: 14px;
