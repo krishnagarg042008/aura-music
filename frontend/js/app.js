@@ -72,14 +72,21 @@ const timeCurrent = document.getElementById("time-current");
 const timeTotal = document.getElementById("time-total");
 const syncBadge = document.getElementById("sync-badge");
 
+const vibeTrigger = document.getElementById("vibe-trigger");
+const vibePopover = document.getElementById("vibe-popover");
 const vibeLabel = document.getElementById("vibe-label");
 const vibePills = document.getElementById("vibe-pills");
+const syncTrigger = document.getElementById("sync-trigger");
+const syncPopover = document.getElementById("sync-popover");
+const syncResetBtn = document.getElementById("sync-reset-btn");
 const offsetVal = document.getElementById("offset-val");
+const syncPopoverVal = document.getElementById("sync-popover-val");
 const immersionBtn = document.getElementById("immersion-btn");
 const cinemaHud = document.getElementById("cinema-hud");
 const cinemaExitBtn = document.getElementById("cinema-exit-btn");
 const cinemaFsBtn = document.getElementById("cinema-fs-btn");
 const appShell = document.getElementById("app");
+const lyricsTools = document.getElementById("lyrics-tools");
 
 // Playlist & Backup DOM
 const tabDiscover = document.getElementById("tab-discover");
@@ -170,8 +177,6 @@ const sidebarQueueCurrent = document.getElementById("sidebar-queue-current");
 const sidebarQueueUpNextBadge = document.getElementById("sidebar-queue-up-next-badge");
 const sidebarQueueList = document.getElementById("sidebar-queue-list");
 
-const headerQueueBtn = document.getElementById("header-queue-btn");
-const headerQueueCount = document.getElementById("header-queue-count");
 const queueToggleBtn = document.getElementById("queue-toggle-btn");
 const queueBadge = document.getElementById("queue-badge");
 const cinemaQueueBtn = document.getElementById("cinema-queue-btn");
@@ -381,10 +386,14 @@ function saveCustomLrc(videoId, rawText) {
 }
 
 function updateSyncUI(offset) {
-  if (!offsetVal) return;
   const val = Math.round(offset * 100) / 100;
-  offsetVal.textContent = `${val >= 0 ? "+" : ""}${val.toFixed(2)}s`;
-  offsetVal.classList.toggle("offset-active", Math.abs(val) > 0.01);
+  const text = `${val >= 0 ? "+" : ""}${val.toFixed(2)}s`;
+  const isActive = Math.abs(val) > 0.01;
+  [offsetVal, syncPopoverVal].forEach((el) => {
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle("offset-active", isActive);
+  });
 }
 
 function applyOffsetDelta(delta) {
@@ -1048,7 +1057,6 @@ function updateQueueBadges() {
     queueBadge.textContent = String(upcomingCount);
     queueBadge.classList.toggle("hidden", upcomingCount === 0);
   }
-  if (headerQueueCount) headerQueueCount.textContent = String(upcomingCount);
   if (cinemaQueueCount) cinemaQueueCount.textContent = String(upcomingCount);
   if (tabQueueCount) tabQueueCount.textContent = String(upcomingCount);
 }
@@ -2297,6 +2305,7 @@ function setCardSelectionUI(enabled) {
   lyricsEngine.setSelectionMode(enabled);
   lyricCardBtn?.classList.toggle("active", enabled);
   lyricCardBar?.classList.toggle("hidden", !enabled);
+  lyricsTools?.classList.toggle("hidden", enabled);
 }
 
 lyricCardBtn?.addEventListener("click", () => {
@@ -2574,11 +2583,47 @@ volumeBar.addEventListener("input", () => {
   }
 });
 
+const HEADER_POPOVERS = [
+  [vibePopover, vibeTrigger],
+  [syncPopover, syncTrigger],
+];
+
+function closeHeaderPopovers() {
+  HEADER_POPOVERS.forEach(([popoverEl, triggerEl]) => {
+    popoverEl?.classList.add("hidden");
+    triggerEl?.setAttribute("aria-expanded", "false");
+    triggerEl?.classList.remove("open");
+  });
+}
+
+function toggleHeaderPopover(popoverEl, triggerEl) {
+  if (!popoverEl) return;
+  const shouldOpen = popoverEl.classList.contains("hidden");
+  closeHeaderPopovers();
+  if (shouldOpen) {
+    popoverEl.classList.remove("hidden");
+    triggerEl?.setAttribute("aria-expanded", "true");
+    triggerEl?.classList.add("open");
+    if (isCinemaMode) resetCinemaInactivity();
+  }
+}
+
+vibeTrigger?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleHeaderPopover(vibePopover, vibeTrigger);
+});
+
+syncTrigger?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleHeaderPopover(syncPopover, syncTrigger);
+});
+
 vibePills.addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-vibe]");
   if (!btn) return;
   const preset = VIBE_PRESETS[btn.dataset.vibe];
   if (preset) applyVibe(preset, false);
+  closeHeaderPopovers();
 });
 
 document.querySelectorAll(".sync-step-btn").forEach((btn) => {
@@ -2588,7 +2633,8 @@ document.querySelectorAll(".sync-step-btn").forEach((btn) => {
   });
 });
 
-offsetVal?.addEventListener("click", resetOffset);
+syncResetBtn?.addEventListener("click", resetOffset);
+syncPopoverVal?.addEventListener("click", resetOffset);
 
 // ================= AUTOMATIC IMMERSIVE CINEMA MODE =================
 const CINEMA_AUTO_TRIGGER_MS = 10000;
@@ -2623,7 +2669,9 @@ function enterCinemaMode(isAuto = false) {
 
   appShell.classList.add("cinema-mode");
   cinemaHud?.classList.remove("hidden");
-  if (immersionBtn) immersionBtn.textContent = "Exit Cinema";
+  closeHeaderPopovers();
+  const immText = immersionBtn?.querySelector(".immersion-text");
+  if (immText) immText.textContent = "Exit";
 
   try {
     if (!document.fullscreenElement) {
@@ -2650,7 +2698,9 @@ function exitCinemaMode(manual = true) {
 
   appShell.classList.remove("cinema-mode", "cinema-idle");
   cinemaHud?.classList.add("hidden");
-  if (immersionBtn) immersionBtn.textContent = "Cinema Mode";
+  closeHeaderPopovers();
+  const immText = immersionBtn?.querySelector(".immersion-text");
+  if (immText) immText.textContent = "Cinema";
 
   if (document.fullscreenElement) {
     try { document.exitFullscreen?.().catch(() => {}); } catch {}
@@ -2666,7 +2716,10 @@ function resetCinemaInactivity() {
   appShell.classList.remove("cinema-idle");
   clearTimeout(cinemaIdleTimer);
   cinemaIdleTimer = setTimeout(() => {
-    if (isCinemaMode) appShell.classList.add("cinema-idle");
+    if (isCinemaMode) {
+      closeHeaderPopovers();
+      appShell.classList.add("cinema-idle");
+    }
   }, CINEMA_IDLE_TIMEOUT_MS);
 }
 
@@ -2698,7 +2751,6 @@ cinemaExitBtn?.addEventListener("click", (e) => { e.stopPropagation(); exitCinem
 cinemaFsBtn?.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(); });
 cinemaQueueBtn?.addEventListener("click", (e) => { e.stopPropagation(); toggleQueueDrawer(); });
 queueToggleBtn?.addEventListener("click", (e) => { e.stopPropagation(); toggleQueueDrawer(); });
-headerQueueBtn?.addEventListener("click", (e) => { e.stopPropagation(); toggleQueueDrawer(); });
 queueCloseBtn?.addEventListener("click", () => toggleQueueDrawer(false));
 queueBackdrop?.addEventListener("click", () => toggleQueueDrawer(false));
 queueClearBtn?.addEventListener("click", clearQueue);
@@ -2741,19 +2793,29 @@ contextMenu?.addEventListener("click", (e) => {
 });
 
 window.addEventListener("click", (e) => {
+  if (!e.target.closest("#vibe-menu-wrap") && !e.target.closest("#sync-menu-wrap")) {
+    closeHeaderPopovers();
+  }
   if (contextMenu && !contextMenu.classList.contains("hidden")) {
     if (!e.target.closest("#context-menu") && !e.target.closest(".track-menu-btn")) {
       closeContextMenu();
     }
   }
 });
-window.addEventListener("scroll", closeContextMenu, { passive: true });
+window.addEventListener("scroll", () => {
+  closeContextMenu();
+  closeHeaderPopovers();
+}, { passive: true });
 
 window.addEventListener("keydown", (e) => {
   const tag = document.activeElement?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
 
   if (e.key === "Escape" || e.code === "Escape") {
+    if ((vibePopover && !vibePopover.classList.contains("hidden")) || (syncPopover && !syncPopover.classList.contains("hidden"))) {
+      closeHeaderPopovers();
+      return;
+    }
     if (contextMenu && !contextMenu.classList.contains("hidden")) { closeContextMenu(); return; }
     if (dialogModal && !dialogModal.classList.contains("hidden")) { closeDialog(null); return; }
     if (audioFxModal && !audioFxModal.classList.contains("hidden")) { audioFxModal.classList.add("hidden"); return; }

@@ -225,7 +225,13 @@ body[data-visual-intensity="vivid"][data-has-track="true"] .ambient-cover-layer.
 }
 
 .app-shell.cinema-mode .stage-header {
+  padding: 14px 22px 0;
+  margin-bottom: 4px;
   transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.app-shell.cinema-mode .header-actions {
+  display: none !important;
 }
 
 .app-shell.cinema-mode .stage-grid {
@@ -313,17 +319,12 @@ body[data-visual-intensity="vivid"][data-has-track="true"] .ambient-cover-layer.
   transform: scale(0.96);
 }
 
-/* Floating Cinema Mode HUD */
+/* Cinema Mode HUD Controls (Inside stage-header on right) */
 .cinema-hud {
-  position: absolute;
-  top: 20px;
-  right: 28px;
-  z-index: 100;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   opacity: 1;
-  transform: translateY(0);
   transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
@@ -334,25 +335,25 @@ body[data-visual-intensity="vivid"][data-has-track="true"] .ambient-cover-layer.
 .cinema-hud-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 6px;
+  padding: 7px 13px;
   color: #fff;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   transition: background 0.2s, transform 0.15s, border-color 0.2s;
 }
 
 .cinema-hud-pill:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.2);
   transform: translateY(-1px);
   border-color: rgba(255, 255, 255, 0.35);
 }
 
 .cinema-hud-pill .icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 /* Cinema Mode Idle State (Fades out distractions after 3s of mouse inactivity) */
@@ -363,13 +364,6 @@ body[data-visual-intensity="vivid"][data-has-track="true"] .ambient-cover-layer.
 .app-shell.cinema-mode.cinema-idle .stage-header {
   opacity: 0;
   transform: translateY(-18px);
-  pointer-events: none;
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.app-shell.cinema-mode.cinema-idle .cinema-hud {
-  opacity: 0;
-  transform: translateY(-14px);
   pointer-events: none;
   transition: opacity 0.6s ease, transform 0.6s ease;
 }
@@ -566,33 +560,95 @@ body[data-visual-intensity="vivid"][data-has-track="true"] .ambient-cover-layer.
 }
 
 .stage-header {
+  position: relative;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
+  flex-wrap: nowrap;
+  margin-bottom: 10px;
   flex-shrink: 0;
 }
 
-.vibe-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px 6px 14px;
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+.vibe-menu-wrap,
+.sync-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
 }
 
-.vibe-bar::-webkit-scrollbar {
-  display: none;
+.vibe-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.vibe-trigger:hover,
+.vibe-trigger.open,
+.sync-trigger:hover,
+.sync-trigger.open {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.vibe-chevron {
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.vibe-trigger.open .vibe-chevron {
+  transform: rotate(180deg);
+}
+
+.header-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 80;
+  padding: 12px;
+  border-radius: 18px;
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.65);
+  animation: popover-in 0.16s ease-out;
+}
+
+@keyframes popover-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.vibe-popover {
+  left: 0;
+  width: min(290px, calc(100vw - 24px));
+}
+
+.sync-popover {
+  right: 0;
+  width: min(300px, calc(100vw - 24px));
+}
+
+.popover-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.popover-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
 }
 
 .vibe-dot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--accent-1);
@@ -600,117 +656,149 @@ body[data-visual-intensity="vivid"][data-has-track="true"] .ambient-cover-layer.
 }
 
 .vibe-title {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  margin-right: 4px;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .vibe-pills {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .vibe-pills button {
-  background: transparent;
-  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-muted);
   font-size: 0.74rem;
   font-weight: 600;
-  padding: 5px 10px;
-  border-radius: 99px;
+  padding: 7px 8px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.18s;
   white-space: nowrap;
+  text-align: center;
 }
 
 .vibe-pills button:hover {
   color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .vibe-pills button.active {
   color: #0b0d14;
   background: #ffffff;
+  border-color: #ffffff;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
-.sync-tuner {
-  display: flex;
+.sync-trigger {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 5px 10px;
   font-size: 0.74rem;
   color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
 }
 
-.sync-tuner .sync-label {
-  font-weight: 500;
-  opacity: 0.8;
-  margin-right: 2px;
+.sync-trigger .sync-label {
+  font-weight: 600;
+  opacity: 0.85;
 }
 
-.sync-tuner button.sync-step-btn {
+.sync-reset-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sync-reset-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sync-tuner-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.sync-tuner-row button.sync-step-btn {
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: #fff;
   font-size: 0.70rem;
-  padding: 3px 6px;
+  padding: 5px 8px;
   border-radius: 99px;
   cursor: pointer;
   transition: all 0.18s ease;
   white-space: nowrap;
 }
 
-.sync-tuner button.sync-step-btn:hover {
+.sync-tuner-row button.sync-step-btn:hover {
   background: rgba(255, 255, 255, 0.22);
-  border-color: rgba(255, 255, 255, 0.25);
-  transform: translateY(-0.5px);
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
-.sync-tuner button.sync-step-btn:active {
-  transform: translateY(0.5px);
-  background: rgba(255, 255, 255, 0.15);
+.sync-popover-hint {
+  margin-top: 8px;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-align: center;
 }
 
-.sync-tuner .offset-badge {
+.offset-badge {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   font-weight: 600;
-  padding: 2px 7px;
+  padding: 2px 6px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.07);
   color: #fff;
-  cursor: pointer;
   transition: all 0.2s ease;
   min-width: 44px;
   text-align: center;
 }
 
-.sync-tuner .offset-badge:hover {
-  background: rgba(255, 255, 255, 0.18);
+.sync-popover .offset-badge {
+  cursor: pointer;
 }
 
-.sync-tuner .offset-badge.offset-active {
+.offset-badge.offset-active {
   color: #38bdf8;
   background: rgba(56, 189, 248, 0.18);
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
 }
 
 .action-pill {
-  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
   color: #fff;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.action-pill .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .action-pill:hover {
@@ -2095,9 +2183,12 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
     opacity: 0;
     pointer-events: none;
   }
-  .app-shell.cinema-mode .cinema-hud {
-    top: 10px;
-    right: 12px;
+  .app-shell.cinema-mode .stage-header {
+    padding: 8px 10px 0;
+  }
+  .app-shell.cinema-mode .cinema-hud-pill {
+    padding: 5px 9px;
+    font-size: 0.72rem;
   }
   .app-shell.cinema-mode .stage-grid {
     padding: 10px 12px 14px;
@@ -2210,45 +2301,25 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
     margin-bottom: 6px;
     gap: 8px;
     flex-wrap: nowrap;
-    overflow: hidden;
   }
-  .vibe-bar {
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
-    padding: 4px 8px;
+  .vibe-trigger {
+    padding: 5px 10px;
     gap: 6px;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .vibe-bar::-webkit-scrollbar {
-    display: none;
   }
   .vibe-title {
-    display: none;
-  }
-  .vibe-pills {
-    display: flex;
-    gap: 3px;
-    flex-shrink: 0;
-  }
-  .vibe-pills button {
-    padding: 4px 8px;
-    font-size: 0.7rem;
-    white-space: nowrap;
+    font-size: 0.74rem;
   }
   .header-actions {
     flex-shrink: 0;
     gap: 6px;
   }
-  .sync-tuner {
-    padding: 4px 8px;
+  .sync-trigger {
+    padding: 5px 8px;
     font-size: 0.7rem;
-    gap: 4px;
   }
-  .sync-tuner button {
-    padding: 2px 6px;
-    font-size: 0.68rem;
+  .action-pill {
+    padding: 6px 10px;
+    font-size: 0.72rem;
   }
 
   /* Art container scaling for mobile screens */
@@ -3008,17 +3079,18 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 /* ================= LYRICS TOOLS & SHARE CARD MODE ================= */
 .lyrics-tools {
   position: absolute;
-  top: 10px;
-  right: 12px;
+  bottom: 14px;
+  right: 14px;
   z-index: 15;
   display: flex;
   gap: 6px;
-  opacity: 0.72;
-  transition: opacity 0.2s ease;
+  opacity: 0.36;
+  transition: opacity 0.22s ease;
 }
 
 .lyrics-col:hover .lyrics-tools,
-.lyrics-tools:focus-within {
+.lyrics-tools:focus-within,
+.lyrics-tools:has(.active) {
   opacity: 1;
 }
 
@@ -3571,8 +3643,10 @@ body[data-skin="manga"] .app-shell.cinema-mode .lyric-line.active {
 
 @media (max-width: 960px) {
   .lyrics-tools {
-    top: 48px;
+    top: 4px;
     right: 8px;
+    bottom: auto;
+    opacity: 0.88;
   }
   .transport {
     gap: 12px;
