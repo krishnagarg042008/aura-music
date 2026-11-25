@@ -1,4 +1,4 @@
-import { VibeScene3D } from "./scene3d.js?v=18";
+import { VibeScene3D } from "./scene3d.js?v=21";
 import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js?v=17";
 import { buildShuffledQueue, detectExternalMusicUrl, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js?v=20";
 
@@ -18,6 +18,7 @@ const VIBE_PRESETS = {
   romantic: { id: "romantic", label: "Golden Bloom", particle_mode: "stardust", speed: 0.55, turbulence: 0.75, default_colors: ["#3b0a2a", "#f43f5e", "#fda4af"] },
   spiritual: { id: "spiritual", label: "Sacred Aura", particle_mode: "diya", speed: 0.40, turbulence: 0.55, default_colors: ["#1c0d04", "#f59e0b", "#fde68a"] },
   cosmic: { id: "cosmic", label: "Cosmic Drift", particle_mode: "astral", speed: 0.68, turbulence: 0.85, default_colors: ["#09051a", "#8b5cf6", "#38bdf8"] },
+  anime: { id: "anime", label: "Sakura Drift", particle_mode: "sakura", speed: 0.72, turbulence: 0.90, default_colors: ["#1b0b24", "#f472b6", "#38bdf8"] },
 };
 
 const EQ_FREQUENCIES = [60, 230, 910, 3600, 14000];
@@ -134,6 +135,7 @@ const ambientCoverImg = document.getElementById("ambient-cover-img");
 const coverHaloCanvas = document.getElementById("cover-halo-canvas");
 const coverHaloCtx = coverHaloCanvas ? coverHaloCanvas.getContext("2d") : null;
 const visIntensityPills = document.getElementById("vis-intensity-pills");
+const themeSkinPills = document.getElementById("theme-skin-pills");
 const visBackdropToggle = document.getElementById("vis-backdrop-toggle");
 const visParticlesToggle = document.getElementById("vis-particles-toggle");
 const visHaloToggle = document.getElementById("vis-halo-toggle");
@@ -228,6 +230,7 @@ function loadPrefs() {
     repeatMode: "off",
     autoRadio: true,
     visualIntensity: "balanced",
+    themeSkin: "default",
     albumBackdrop: true,
     particlesEnabled: true,
     spectrumHalo: true,
@@ -1295,6 +1298,9 @@ function syncAudioFxUI() {
   visIntensityPills?.querySelectorAll(".vis-int-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.intensity === (prefs.visualIntensity || "balanced"));
   });
+  themeSkinPills?.querySelectorAll(".skin-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.skin === (prefs.themeSkin || "default"));
+  });
   if (visBackdropToggle) visBackdropToggle.checked = prefs.albumBackdrop !== false;
   if (visParticlesToggle) visParticlesToggle.checked = prefs.particlesEnabled !== false;
   if (visHaloToggle) visHaloToggle.checked = prefs.spectrumHalo !== false;
@@ -1305,12 +1311,16 @@ function applyVisualPreferences() {
   const intensity = ["minimal", "balanced", "vivid"].includes(prefs.visualIntensity)
     ? prefs.visualIntensity
     : "balanced";
+  const skin = ["default", "anime", "manga"].includes(prefs.themeSkin)
+    ? prefs.themeSkin
+    : "default";
   const particlesEnabled = prefs.particlesEnabled !== false;
   const albumBackdrop = prefs.albumBackdrop !== false;
   const spectrumHalo = prefs.spectrumHalo !== false;
 
   document.body.setAttribute("data-visual-intensity", intensity);
-  scene3D.setVisualOptions({ intensity, particlesEnabled });
+  document.body.setAttribute("data-skin", skin);
+  scene3D.setVisualOptions({ intensity, particlesEnabled, skin });
 
   if (ambientCoverLayer) {
     ambientCoverLayer.classList.toggle("hidden", !albumBackdrop);
@@ -1436,6 +1446,15 @@ visIntensityPills?.addEventListener("click", (e) => {
   const btn = e.target.closest(".vis-int-btn");
   if (!btn) return;
   prefs.visualIntensity = btn.dataset.intensity || "balanced";
+  savePrefs();
+  applyVisualPreferences();
+  syncAudioFxUI();
+});
+
+themeSkinPills?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".skin-btn");
+  if (!btn) return;
+  prefs.themeSkin = btn.dataset.skin || "default";
   savePrefs();
   applyVisualPreferences();
   syncAudioFxUI();

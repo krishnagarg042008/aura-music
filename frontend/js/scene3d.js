@@ -21,6 +21,8 @@ const BACKDROP_FRAG = `
   uniform float uSpeed;
   uniform float uTurbulence;
   uniform float uIntensity;
+  uniform float uAnimeRay;
+  uniform float uMangaTone;
   uniform vec3 uColorBase;
   uniform vec3 uColorA;
   uniform vec3 uColorB;
@@ -85,6 +87,22 @@ const BACKDROP_FRAG = `
     float cursorGlow = exp(-length(vUv - (uMouse * 0.5 + 0.5)) * 4.0) * (0.12 + uBass * 0.2) * inten;
     col += uColorB * cursorGlow;
 
+    // Anime Makoto Shinkai twilight diagonal sunbeams
+    if (uAnimeRay > 0.01) {
+      float rayAxis = (uv.x * 0.72 + uv.y * 0.95) * 6.5 - t * 0.42;
+      float rays = pow(0.5 + 0.5 * sin(rayAxis), 4.0) * smoothstep(0.12, 0.95, uv.y) * uAnimeRay;
+      col += mix(vec3(1.0, 0.56, 0.80), vec3(0.45, 0.84, 1.0), uv.x) * rays * (0.14 + uMid * 0.18) * inten;
+    }
+
+    // Manga panel edge speed-lines reactive to bass hits
+    if (uMangaTone > 0.01) {
+      vec2 centered = vUv - 0.5;
+      float ang = atan(centered.y, centered.x);
+      float rad = length(centered);
+      float streak = pow(0.5 + 0.5 * sin(ang * 44.0 + floor(uTime * 10.0) * 0.35), 8.0);
+      col += vec3(0.88, 0.95, 1.0) * streak * smoothstep(0.26, 0.64, rad) * (0.04 + uBass * 0.14) * uMangaTone * inten;
+    }
+
     gl_FragColor = vec4(col * 0.72, 1.0);
   }
 `;
@@ -139,6 +157,14 @@ const PARTICLE_VERT = `
       float spanY = 14.0;
       p.y = mod(p.y + 7.0 + uTime * (0.48 + s1 * 0.55) * (1.0 + uMid * 0.8), spanY) - 7.0;
       p.x += sin(uTime * 0.7 + s2 * 14.0) * 0.38;
+    } else if (uMode > 7.5) {
+      // Sakura (Anime): cherry blossom petals drifting & fluttering in diagonal breeze
+      float spanY = 14.0;
+      float fallRate = 1.05 + s1 * 1.1 + uBass * 0.45;
+      p.y = 7.0 - mod(7.0 - p.y + uTime * fallRate, spanY);
+      float breeze = sin(uTime * 1.25 + s2 * 16.0 + p.y * 0.45) * 0.85;
+      p.x = mod(p.x - uTime * (0.52 + s3 * 0.35) + breeze + 11.0, 22.0) - 11.0;
+      p.z += cos(uTime * 1.05 + s1 * 12.0) * 0.35;
     } else if (uMode > 6.5) {
       // Astral (Cosmic): slow celestial orbital field
       float drift = t * 0.28 + s2 * 6.28318;
@@ -164,7 +190,7 @@ const PARTICLE_VERT = `
     float depthFade = clamp(1.0 - (-mvPos.z / 20.0), 0.15, 1.0);
     vAlpha = depthFade * (0.35 + 0.35 * sin(uTime * 1.4 + s2 * 12.0) + (uBass * 0.25 + uMid * 0.12)) * clamp(uIntensity, 0.35, 1.4);
 
-    float sizeScale = (uMode > 2.5 && uMode < 3.5) ? 26.0 : (uMode > 4.5 && uMode < 6.5 ? 24.0 : 18.0);
+    float sizeScale = (uMode > 7.5 || (uMode > 2.5 && uMode < 3.5)) ? 26.0 : (uMode > 4.5 && uMode < 6.5 ? 24.0 : 18.0);
     float baseSize = (sizeScale + s1 * 16.0 + uBass * 13.0) * uPixelRatio;
     gl_PointSize = clamp(baseSize / max(1.0, -mvPos.z), 2.0, 22.0);
   }
@@ -184,7 +210,18 @@ const PARTICLE_FRAG = `
     vec2 p = gl_PointCoord - vec2(0.5);
     float shape = 0.0;
 
-    if (uMode > 2.5 && uMode < 3.5) {
+    if (uMode > 7.5) {
+      // Anime Sakura: rotating notched cherry-blossom petal
+      float ang = uTime * (0.9 + vSeed * 1.5) + vSeed * 6.28318;
+      float c = cos(ang);
+      float s = sin(ang);
+      vec2 rp = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+      rp.x *= 1.35;
+      rp.y = rp.y * 1.05 + 0.04;
+      float notch = smoothstep(0.0, 0.22, rp.y) * max(0.0, 0.14 - abs(rp.x) * 0.75);
+      float d = length(rp + vec2(0.0, notch)) + max(0.0, -rp.y) * 0.12;
+      shape = smoothstep(0.36, 0.11, d) * 0.92;
+    } else if (uMode > 2.5 && uMode < 3.5) {
       // Raindrop: slanted narrow streak
       vec2 rp = vec2(p.x * 0.96 - p.y * 0.26, p.x * 0.26 + p.y * 0.96);
       float sx = smoothstep(0.08, 0.01, abs(rp.x));
@@ -224,6 +261,10 @@ const PARTICLE_FRAG = `
 
     if (shape < 0.02) discard;
     vec3 col = mix(uColorB, uColorA, vSeed * 0.55);
+    if (uMode > 7.5) {
+      vec3 sakuraTint = mix(vec3(1.0, 0.72, 0.86), vec3(1.0, 0.92, 0.97), vSeed);
+      col = mix(col, sakuraTint, 0.72);
+    }
     gl_FragColor = vec4(col, shape * clamp(vAlpha, 0.0, 0.82));
   }
 `;
@@ -237,6 +278,7 @@ const PARTICLE_MODE_INDEX = {
   stardust: 5.0,
   diya: 6.0,
   astral: 7.0,
+  sakura: 8.0,
 };
 
 const INTENSITY_MAP = {
@@ -287,6 +329,9 @@ export class VibeScene3D {
 
     this.visualIntensity = 1.0;
     this.particlesEnabled = true;
+    this.themeSkin = "default";
+    this.targetAnimeRay = 0.0;
+    this.targetMangaTone = 0.0;
     this.audio = { bass: 0, mid: 0, high: 0 };
 
     this._initBackdrop();
@@ -311,6 +356,8 @@ export class VibeScene3D {
       uSpeed: { value: 1.0 },
       uTurbulence: { value: 1.1 },
       uIntensity: { value: 1.0 },
+      uAnimeRay: { value: 0.0 },
+      uMangaTone: { value: 0.0 },
       uColorBase: { value: this.targetColors.base.clone() },
       uColorA: { value: this.targetColors.a.clone() },
       uColorB: { value: this.targetColors.b.clone() },
@@ -390,16 +437,24 @@ export class VibeScene3D {
     const modeKey = this.vibe.particle_mode || "float";
     const modeIdx = PARTICLE_MODE_INDEX[modeKey] ?? 0.0;
     this.particleUniforms.uMode.value = modeIdx;
+    this._syncSkinTargets();
   }
 
-  setVisualOptions({ intensity = "balanced", particlesEnabled = true } = {}) {
+  _syncSkinTargets() {
+    this.targetAnimeRay = (this.vibe?.id === "anime" || this.themeSkin === "anime") ? 1.0 : 0.0;
+    this.targetMangaTone = this.themeSkin === "manga" ? 1.0 : 0.0;
+  }
+
+  setVisualOptions({ intensity = "balanced", particlesEnabled = true, skin = "default" } = {}) {
     this.visualIntensity = INTENSITY_MAP[intensity] ?? 1.0;
     this.particlesEnabled = Boolean(particlesEnabled);
+    this.themeSkin = skin || "default";
     if (this.particles) {
       this.particles.visible = this.particlesEnabled;
     }
     this.bgUniforms.uIntensity.value = this.visualIntensity;
     this.particleUniforms.uIntensity.value = this.visualIntensity;
+    this._syncSkinTargets();
   }
 
   updateAudio(bass, mid, high) {
@@ -479,6 +534,8 @@ export class VibeScene3D {
     this.bgUniforms.uColorBase.value.lerp(this.targetColors.base, 0.035);
     this.bgUniforms.uColorA.value.lerp(this.targetColors.a, 0.035);
     this.bgUniforms.uColorB.value.lerp(this.targetColors.b, 0.035);
+    this.bgUniforms.uAnimeRay.value = THREE.MathUtils.lerp(this.bgUniforms.uAnimeRay.value, this.targetAnimeRay, 0.06);
+    this.bgUniforms.uMangaTone.value = THREE.MathUtils.lerp(this.bgUniforms.uMangaTone.value, this.targetMangaTone, 0.06);
 
     this.bgUniforms.uTime.value = elapsed;
     this.bgUniforms.uMouse.value.copy(this.mouse);

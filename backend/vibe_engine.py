@@ -115,7 +115,18 @@ VIBE_PROFILES: Dict[str, Dict] = {
         "turbulence": 0.85,
         "default_colors": ["#09051a", "#8b5cf6", "#38bdf8"],
     },
+    "anime": {
+        "id": "anime",
+        "label": "Sakura Drift",
+        "geometry": "sakura_breeze",
+        "particle_mode": "sakura",
+        "speed": 0.72,
+        "turbulence": 0.90,
+        "default_colors": ["#1b0b24", "#f472b6", "#38bdf8"],
+    },
 }
+
+_JAPANESE_KANA_RE = re.compile(r"[\u3040-\u309F\u30A0-\u30FF]")
 
 VIBE_KEYWORDS: Dict[str, List[str]] = {
     "spiritual": [
@@ -170,6 +181,15 @@ VIBE_KEYWORDS: Dict[str, List[str]] = {
         "cosmic", "galaxy", "universe", "interstellar", "nebula", "astral",
         "stardust", "cosmos", "orbital", "eclipse", "supernova", "moonlight",
         "stargazing", "space", "celestial", "constellation", "chaand", "चाँद", "ਤਾਰੇ",
+    ],
+    "anime": [
+        "anime", "anime op", "anime ed", "j-pop", "jpop", "vocaloid", "yoasobi",
+        "kenshi yonezu", "radwimps", "hiroyuki sawano", "sawano", "fujii kaze",
+        "miki matsubara", "mariya takeuchi", "suzume", "your name", "kimi no na wa",
+        "naruto", "one piece", "demon slayer", "kimetsu", "attack on titan",
+        "shingeki", "jujutsu kaisen", "chainsaw man", "gurenge", "zankyosanka",
+        "shinunoga", "hatsune miku", "city pop", "stay with me", "kaikai kitan",
+        "cruel angel", "blue bird", "sakura", "night dancer", "imase",
     ],
 }
 
@@ -238,12 +258,17 @@ async def extract_palette(client: httpx.AsyncClient, image_url: str) -> List[str
 
 
 def classify_vibe(title: str, artist: str, lyrics_text: str = "") -> Dict:
-    # Preserve both ASCII words and Unicode Devanagari/Gurmukhi words
+    # Preserve ASCII words plus Devanagari, Gurmukhi, and Japanese Kana/CJK characters
     corpus = f"{title} {artist} {lyrics_text[:1500]}".lower()
-    corpus = re.sub(r"[^\w\s\-\u0900-\u097F\u0A00-\u0A7F]", " ", corpus)
+    corpus = re.sub(r"[^\w\s\-\u0900-\u097F\u0A00-\u0A7F\u3040-\u30FF\u4E00-\u9FFF]", " ", corpus)
 
     scores: Dict[str, float] = {k: 0.0 for k in VIBE_PROFILES}
     meta_text = f"{title} {artist}".lower()
+
+    if _JAPANESE_KANA_RE.search(meta_text):
+        scores["anime"] += 4.5
+    elif _JAPANESE_KANA_RE.search(lyrics_text[:1500]):
+        scores["anime"] += 2.5
 
     for vibe, keywords in VIBE_KEYWORDS.items():
         for kw in keywords:

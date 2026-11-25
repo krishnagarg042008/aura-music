@@ -88,6 +88,14 @@ body[data-vibe="cosmic"] {
   --lyric-glow: 0 0 30px rgba(139, 92, 246, 0.78), 0 0 54px rgba(56, 189, 248, 0.5);
 }
 
+body[data-vibe="anime"] {
+  --lyric-font: "Shippori Mincho", "Zen Kaku Gothic New", "Space Grotesk", sans-serif;
+  --lyric-weight: 700;
+  --lyric-size: clamp(1.85rem, 2.95vw, 2.8rem);
+  --lyric-tracking: 0.015em;
+  --lyric-glow: 0 0 28px rgba(244, 114, 182, 0.78), 0 0 56px rgba(56, 189, 248, 0.48);
+}
+
 /* ================= BASE LAYOUT (FIXED SCROLL BOUNDS) ================= */
 * {
   box-sizing: border-box;
@@ -985,6 +993,23 @@ body[data-vibe="cosmic"] .art-container.playing::after {
   background: linear-gradient(125deg, rgba(139, 92, 246, 0.25) 0%, transparent 50%, rgba(56, 189, 248, 0.25) 100%);
 }
 
+/* 9. ANIME (SAKURA DRIFT) */
+body[data-vibe="anime"] .art-container { --bass-strength: 0.09; }
+body[data-vibe="anime"] .art-container.playing {
+  animation: cover-chill-float 5.2s ease-in-out infinite;
+}
+body[data-vibe="anime"] .art-container.playing .cover-ring {
+  inset: -16px;
+  border-radius: 36px;
+  background: conic-gradient(from 120deg, #f472b6, #38bdf8, #fbcfe8, #f472b6);
+  filter: blur(22px);
+  animation: cover-neon-spin 6.5s linear infinite;
+}
+body[data-vibe="anime"] .art-container.playing::after {
+  opacity: 0.42;
+  background: linear-gradient(130deg, rgba(244, 114, 182, 0.32) 0%, transparent 45%, rgba(56, 189, 248, 0.26) 100%);
+}
+
 @keyframes cover-chill-float {
   0%, 100% { translate: 0 0px; rotate: -1deg; }
   50% { translate: 0 -13px; rotate: 1deg; }
@@ -1268,6 +1293,7 @@ body[data-vibe="rock"] .lyric-word.word-active { transform: scale(1.1) skewX(-5d
 body[data-vibe="chill"] .lyric-word.word-active,
 body[data-vibe="romantic"] .lyric-word.word-active { transform: translateY(-3px) scale(1.03); }
 body[data-vibe="synth"] .lyric-word.word-active { transform: translateY(-2px) scale(1.05); }
+body[data-vibe="anime"] .lyric-word.word-active { transform: translateY(-3px) scale(1.06); }
 body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px); letter-spacing: 0.03em; }
 
 .hidden {
@@ -3172,7 +3198,8 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 
 .eq-preset-btn,
 .cf-btn,
-.vis-int-btn {
+.vis-int-btn,
+.skin-btn {
   padding: 6px 11px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -3186,7 +3213,8 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 
 .eq-preset-btn.active,
 .cf-btn.active,
-.vis-int-btn.active {
+.vis-int-btn.active,
+.skin-btn.active {
   background: #ffffff;
   color: #0a0b14;
   border-color: #ffffff;
@@ -3408,6 +3436,137 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ================= UI THEME SKINS (ANIME UI & MANGA INK) ================= */
+body[data-skin="anime"] {
+  --glass-bg: rgba(20, 11, 30, 0.52);
+  --glass-border: rgba(244, 114, 182, 0.36);
+}
+
+body[data-skin="anime"] .glass-panel {
+  background-image:
+    radial-gradient(rgba(251, 207, 232, 0.12) 1px, transparent 1px),
+    linear-gradient(155deg, rgba(244, 114, 182, 0.08), rgba(56, 189, 248, 0.06));
+  background-size: 16px 16px, 100% 100%;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(56, 189, 248, 0.16);
+}
+
+body[data-skin="anime"] .glass-pill {
+  background: rgba(26, 14, 38, 0.62);
+  border-color: rgba(244, 114, 182, 0.34);
+  box-shadow: 0 6px 20px rgba(244, 114, 182, 0.12);
+}
+
+body[data-skin="anime"] .brand span::after {
+  content: "ANIME";
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  vertical-align: middle;
+  background: linear-gradient(135deg, #f472b6, #38bdf8);
+  color: #0b0d14;
+  transform: skewX(-8deg);
+}
+
+body[data-skin="anime"] .nav-tab.active,
+body[data-skin="anime"] .vibe-pills button.active {
+  background: linear-gradient(135deg, #f472b6, #38bdf8);
+  color: #090b12;
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(244, 114, 182, 0.36);
+}
+
+body[data-skin="anime"] .track-item.active {
+  background: linear-gradient(90deg, rgba(244, 114, 182, 0.22), rgba(56, 189, 248, 0.1));
+  border-left: 3px solid #f472b6;
+}
+
+body[data-skin="anime"] .art-container {
+  border: 1.5px solid rgba(251, 207, 232, 0.42);
+  box-shadow: 0 28px 72px rgba(244, 114, 182, 0.22), 0 0 38px rgba(56, 189, 248, 0.22);
+}
+
+body[data-skin="anime"] .app-shell.cinema-mode .lyric-line.active {
+  text-shadow: 0 0 28px rgba(244, 114, 182, 0.72), 0 0 54px rgba(56, 189, 248, 0.48);
+}
+
+body[data-skin="manga"] {
+  --glass-bg: rgba(10, 11, 16, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.42);
+}
+
+body[data-skin="manga"] .glass-panel {
+  border-width: 1.5px;
+  border-radius: 18px;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.11) 1.1px, transparent 1.1px);
+  background-size: 11px 11px;
+  box-shadow:
+    5px 5px 0 rgba(0, 0, 0, 0.65),
+    0 20px 52px rgba(0, 0, 0, 0.58);
+}
+
+body[data-skin="manga"] .glass-pill {
+  background: rgba(12, 13, 20, 0.86);
+  border: 1.5px solid rgba(255, 255, 255, 0.34);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.55);
+}
+
+body[data-skin="manga"] .brand span::after {
+  content: "MANGA";
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  vertical-align: middle;
+  background: #ffffff;
+  color: #090a0f;
+  border: 1px solid #000000;
+  box-shadow: 2px 2px 0 var(--accent-2);
+  transform: skewX(-10deg);
+}
+
+body[data-skin="manga"] .nav-tab.active,
+body[data-skin="manga"] .vibe-pills button.active {
+  background: #ffffff;
+  color: #090a0f;
+  border-color: #ffffff;
+  box-shadow: 2px 2px 0 var(--accent-1);
+  transform: skewX(-6deg);
+}
+
+body[data-skin="manga"] .track-item {
+  border-radius: 10px;
+}
+
+body[data-skin="manga"] .track-item.active {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.55);
+}
+
+body[data-skin="manga"] .art-container {
+  border-radius: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.65);
+  box-shadow: 7px 7px 0 rgba(0, 0, 0, 0.72), 0 0 28px rgba(255, 255, 255, 0.14);
+}
+
+body[data-skin="manga"] .album-art {
+  border-radius: 16px;
+}
+
+body[data-skin="manga"] .app-shell.cinema-mode .lyric-line.active {
+  text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.9), var(--lyric-glow);
 }
 
 @media (max-width: 960px) {

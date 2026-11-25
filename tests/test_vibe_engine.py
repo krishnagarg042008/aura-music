@@ -38,6 +38,14 @@ class TestVibeEngine(unittest.TestCase):
         self.assertEqual(classify_vibe("Brown Munde", "AP Dhillon")["id"], "hype")
         self.assertEqual(classify_vibe("Kesariya", "Arijit Singh", "केसरिया तेरा इश्क़ है पिया")["id"], "romantic")
 
+    def test_classify_anime_vibe_and_avoids_false_positives(self):
+        self.assertEqual(classify_vibe("Idol", "YOASOBI")["id"], "anime")
+        self.assertEqual(classify_vibe("Suzume", "RADWIMPS")["id"], "anime")
+        self.assertEqual(classify_vibe("Night Track", "Artist", "夢の中で君を探していた")["id"], "anime")
+
+        # Short substrings ("ost", "eve", "ado") must not leak into unrelated English titles
+        self.assertNotEqual(classify_vibe("Lost Forever", "Shadow Band")["id"], "anime")
+
 
 class TestExtractPalette(unittest.IsolatedAsyncioTestCase):
     async def test_extract_palette_rejects_disallowed_url_without_http(self):
