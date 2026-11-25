@@ -1,28 +1,89 @@
 import asyncio
 import json
+import os
 import re
 import time
+from collections import OrderedDict, deque
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 import yt_dlp
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from ytmusicapi import YTMusic
 
+from backend.cache import BoundedTTLCache, SingleFlight
 from backend.lyrics_engine import fetch_synced_lyrics
-from backend.vibe_engine import VIBE_PROFILES, classify_vibe, extract_palette
+from backend.vibe_engine import (
+    VIBE_PROFILES,
+    classify_vibe,
+    extract_palette,
+    is_allowed_thumbnail_url,
+)
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+VIDEO_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{6,20}$")
 
 ytmusic = YTMusic()
-STREAM_CACHE: Dict[str, Tuple[str, str, float]] = {}
+STREAM_CACHE: BoundedTTLCache[Tuple[str, str]] = BoundedTTLCache(maxsize=200, ttl=1800.0)
+TRENDING_CACHE: BoundedTTLCache[List[Dict[str, Any]]] = BoundedTTLCache(maxsize=4, ttl=1800.0)
+SEARCH_CACHE: BoundedTTLCache[List[Dict[str, Any]]] = BoundedTTLCache(maxsize=128, ttl=300.0)
+META_CACHE: BoundedTTLCache[Dict[str, Any]] = BoundedTTLCache(maxsize=300, ttl=3600.0)
+
+STREAM_FLIGHT = SingleFlight()
+TRENDING_FLIGHT = SingleFlight()
 http_client: Optional[httpx.AsyncClient] = None
+
+
+def _validate_video_id(video_id: str) -> str:
+    if not VIDEO_ID_RE.fullmatch(video_id or ""):
+        raise HTTPException(status_code=400, detail="Invalid video ID format.")
+    return video_id
+
+
+def _parse_cors_origins() -> List[str]:
+    raw = os.environ.get("AURA_CORS_ORIGINS", "*").strip()
+    if not raw or raw == "*":
+        return ["*"]
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+class SlidingWindowRateLimiter:
+    """Bounded per-IP sliding-window rate limiter for API abuse prevention."""
+
+    def __init__(self, max_clients: int = 2048) -> None:
+        self.max_clients = max_clients
+        self._buckets: OrderedDict[Tuple[str, str], Deque[float]] = OrderedDict()
+
+    def allow(self, client_key: str, bucket: str, limit: int, window_sec: float = 60.0) -> bool:
+        now = time.monotonic()
+        key = (client_key, bucket)
+        q = self._buckets.get(key)
+        if q is None:
+            q = deque()
+            self._buckets[key] = q
+        else:
+            self._buckets.move_to_end(key)
+
+        cutoff = now - window_sec
+        while q and q[0] <= cutoff:
+            q.popleft()
+
+        if len(q) >= limit:
+            return False
+
+        q.append(now)
+        while len(self._buckets) > self.max_clients:
+            self._buckets.popitem(last=False)
+        return True
+
+
+RATE_LIMITER = SlidingWindowRateLimiter()
 
 
 def get_http_client() -> httpx.AsyncClient:
@@ -44,10 +105,33 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AURA Music Engine", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_parse_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    enabled = os.environ.get("AURA_RATE_LIMIT_ENABLED", "1").lower() not in ("0", "false", "no")
+    path = request.url.path
+    if enabled and path.startswith("/api/"):
+        client_ip = request.client.host if request.client else "unknown"
+        if path.startswith("/api/stream/"):
+            bucket, limit = "stream", 120
+        elif path.startswith("/api/playlist"):
+            bucket, limit = "playlist", 25
+        else:
+            bucket, limit = "api", 180
+
+        if not RATE_LIMITER.allow(client_ip, bucket, limit=limit, window_sec=60.0):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded. Please wait a moment and try again."},
+                headers={"Retry-After": "10"},
+            )
+
+    return await call_next(request)
 
 
 def _upgrade_thumbnail(thumbnails: List[Dict[str, Any]], video_id: str) -> str:
@@ -89,10 +173,9 @@ def _format_track(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _resolve_youtube_audio(video_id: str) -> Tuple[str, str]:
-    now = time.time()
     cached = STREAM_CACHE.get(video_id)
-    if cached and cached[2] > now:
-        return cached[0], cached[1]
+    if cached is not None:
+        return cached
 
     # Try mobile player clients (android, ios, mweb) to bypass "Sign in to confirm you're not a bot" on datacenter IPs (Vercel, Render, AWS)
     client_candidates = [
@@ -132,13 +215,27 @@ def _resolve_youtube_audio(video_id: str) -> Tuple[str, str]:
                 ext = info.get("ext", "mp4")
                 content_type = mime_map.get(ext, "audio/mp4")
                 if stream_url:
-                    STREAM_CACHE[video_id] = (stream_url, content_type, now + 1800)
+                    STREAM_CACHE.set(video_id, (stream_url, content_type))
                     return stream_url, content_type
         except Exception as exc:
             last_error = exc
             continue
 
     raise RuntimeError(f"Could not extract audio stream: {last_error}")
+
+
+async def _resolve_youtube_audio_coalesced(video_id: str) -> Tuple[str, str]:
+    cached = STREAM_CACHE.get(video_id)
+    if cached is not None:
+        return cached
+
+    async def _do_resolve() -> Tuple[str, str]:
+        rechecked = STREAM_CACHE.get(video_id)
+        if rechecked is not None:
+            return rechecked
+        return await asyncio.to_thread(_resolve_youtube_audio, video_id)
+
+    return await STREAM_FLIGHT.run(video_id, _do_resolve)
 
 
 def _extract_yt_initial_data(html: str) -> Optional[Dict[str, Any]]:
@@ -211,7 +308,12 @@ def _parse_playlist_from_initial_data(data: Dict[str, Any]) -> Tuple[str, List[D
 
 
 @app.get("/api/search")
-async def search_tracks(q: str = Query(..., min_length=1), limit: int = 18):
+async def search_tracks(q: str = Query(..., min_length=1), limit: int = Query(18, ge=1, le=50)):
+    cache_key = (q.strip().lower(), limit)
+    cached = SEARCH_CACHE.get(cache_key)
+    if cached is not None:
+        return {"results": cached}
+
     def _do_search():
         songs = ytmusic.search(q, filter="songs", limit=limit)
         if len(songs) < 6:
@@ -227,36 +329,59 @@ async def search_tracks(q: str = Query(..., min_length=1), limit: int = 18):
         if track and track["videoId"] not in seen:
             seen.add(track["videoId"])
             results.append(track)
-    return {"results": results[:limit]}
+    trimmed = results[:limit]
+    SEARCH_CACHE.set(cache_key, trimmed)
+    return {"results": trimmed}
+
+
+TRENDING_QUERIES = [
+    "Blinding Lights The Weeknd",
+    "Kesariya Arijit Singh",
+    "FE!N Travis Scott",
+    "Birds of a Feather Billie Eilish",
+    "Numb Linkin Park",
+    "Starboy Daft Punk",
+    "Chura Liya Hai Tumne",
+    "Lofi hip hop chill beats",
+]
 
 
 @app.get("/api/trending")
 async def get_trending():
-    """Fallback discover feed — used when no listening history exists yet."""
-    def _do_trending():
-        queries = [
-            "Blinding Lights The Weeknd",
-            "Kesariya Arijit Singh",
-            "FE!N Travis Scott",
-            "Birds of a Feather Billie Eilish",
-            "Numb Linkin Park",
-            "Starboy Daft Punk",
-            "Chura Liya Hai Tumne",
-            "Lofi hip hop chill beats",
-        ]
-        tracks = []
+    """Fallback discover feed — cached and parallelized for fast startup."""
+    cached = TRENDING_CACHE.get("trending")
+    if cached is not None:
+        return {"results": cached}
+
+    async def _build_trending() -> List[Dict[str, Any]]:
+        rechecked = TRENDING_CACHE.get("trending")
+        if rechecked is not None:
+            return rechecked
+
+        def _fetch_one(query: str) -> Optional[Dict[str, Any]]:
+            try:
+                res = ytmusic.search(query, filter="songs", limit=2)
+                for item in res:
+                    t = _format_track(item)
+                    if t:
+                        return t
+            except Exception as exc:
+                print(f"[Trending] search failed for {query!r}: {exc}")
+            return None
+
+        candidates = await asyncio.gather(*(asyncio.to_thread(_fetch_one, q) for q in TRENDING_QUERIES))
+        tracks: List[Dict[str, Any]] = []
         seen = set()
-        for q in queries:
-            res = ytmusic.search(q, filter="songs", limit=2)
-            for item in res:
-                t = _format_track(item)
-                if t and t["videoId"] not in seen:
-                    seen.add(t["videoId"])
-                    tracks.append(t)
-                    break
+        for t in candidates:
+            if t and t["videoId"] not in seen:
+                seen.add(t["videoId"])
+                tracks.append(t)
+
+        if tracks:
+            TRENDING_CACHE.set("trending", tracks)
         return tracks
 
-    tracks = await asyncio.to_thread(_do_trending)
+    tracks = await TRENDING_FLIGHT.run("trending", _build_trending)
     return {"results": tracks}
 
 
@@ -369,20 +494,33 @@ async def get_track_meta(
     duration: int = Query(0),
     thumb: str = Query(""),
 ):
+    _validate_video_id(video_id)
+    safe_thumb = (
+        thumb.strip()
+        if is_allowed_thumbnail_url(thumb)
+        else f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+    )
+    meta_key = (video_id, title.strip(), artist.strip(), int(duration or 0), safe_thumb)
+    cached_meta = META_CACHE.get(meta_key)
+    if cached_meta is not None:
+        return cached_meta
+
     client = get_http_client()
     lyrics_task = fetch_synced_lyrics(client, title, artist, duration or None, video_id=video_id)
-    palette_task = extract_palette(client, thumb)
+    palette_task = extract_palette(client, safe_thumb)
     lyrics_data, palette = await asyncio.gather(lyrics_task, palette_task)
 
     vibe = classify_vibe(title, artist, lyrics_data.get("plain_text", ""))
     vibe["colors"] = palette
 
-    return {
+    payload = {
         "videoId": video_id,
         "vibe": vibe,
         "availableVibes": list(VIBE_PROFILES.values()),
         "lyrics": lyrics_data,
     }
+    META_CACHE.set(meta_key, payload)
+    return payload
 
 
 @app.get("/api/playlist")
@@ -406,6 +544,12 @@ async def import_youtube_playlist(url: str = Query(..., min_length=2)):
         raise HTTPException(
             status_code=400,
             detail="Liked Music / Watch Later are private. Copy them into an Unlisted or Public playlist first.",
+        )
+
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{2,128}", playlist_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid YouTube playlist URL or ID.",
         )
 
     errors: List[str] = []
@@ -536,9 +680,10 @@ async def import_youtube_playlist(url: str = Query(..., min_length=2)):
 
 @app.api_route("/api/stream/{video_id}", methods=["GET", "HEAD"])
 async def stream_audio(video_id: str, request: Request):
+    _validate_video_id(video_id)
     client = get_http_client()
     try:
-        stream_url, content_type = await asyncio.to_thread(_resolve_youtube_audio, video_id)
+        stream_url, content_type = await _resolve_youtube_audio_coalesced(video_id)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Failed to resolve YouTube audio: {exc}")
 
@@ -553,10 +698,18 @@ async def stream_audio(video_id: str, request: Request):
 
     if upstream_resp.status_code in (403, 410):
         await upstream_resp.aclose()
-        STREAM_CACHE.pop(video_id, None)
-        stream_url, content_type = await asyncio.to_thread(_resolve_youtube_audio, video_id)
-        upstream_req = client.build_request(request.method, stream_url, headers=req_headers)
-        upstream_resp = await client.send(upstream_req, stream=True)
+        STREAM_CACHE.delete(video_id)
+        try:
+            stream_url, content_type = await _resolve_youtube_audio_coalesced(video_id)
+            upstream_req = client.build_request(request.method, stream_url, headers=req_headers)
+            upstream_resp = await client.send(upstream_req, stream=True)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to refresh YouTube audio stream: {exc}")
+
+    if upstream_resp.status_code >= 400:
+        status_code = upstream_resp.status_code
+        await upstream_resp.aclose()
+        raise HTTPException(status_code=502, detail=f"Upstream audio server returned HTTP {status_code}")
 
     resp_headers = {
         "Accept-Ranges": "bytes",
@@ -573,7 +726,6 @@ async def stream_audio(video_id: str, request: Request):
 
     if request.method == "HEAD":
         await upstream_resp.aclose()
-        from fastapi.responses import Response
         return Response(status_code=upstream_resp.status_code, headers=resp_headers)
 
     async def byte_generator():
@@ -593,6 +745,30 @@ async def stream_audio(video_id: str, request: Request):
 # Mount frontend assets
 app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
 app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
+
+
+@app.get("/manifest.json")
+async def serve_manifest():
+    return FileResponse(FRONTEND_DIR / "manifest.json", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+async def serve_service_worker():
+    return FileResponse(
+        FRONTEND_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/icons/{icon_name}")
+async def serve_icon(icon_name: str):
+    if not re.fullmatch(r"[a-zA-Z0-9_.-]+", icon_name):
+        raise HTTPException(status_code=404, detail="Not found")
+    icon_path = FRONTEND_DIR / "icons" / icon_name
+    if not icon_path.is_file():
+        raise HTTPException(status_code=404, detail="Icon not found")
+    return FileResponse(icon_path)
 
 
 @app.get("/health")

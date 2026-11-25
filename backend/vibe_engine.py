@@ -1,9 +1,45 @@
 import colorsys
 import io
+import ipaddress
 import re
 from typing import Dict, List, Tuple
+from urllib.parse import urlparse
 import httpx
 from PIL import Image
+
+ALLOWED_THUMB_DOMAINS = (
+    "ytimg.com",
+    "youtube.com",
+    "ggpht.com",
+    "googleusercontent.com",
+)
+MAX_THUMB_BYTES = 5 * 1024 * 1024  # 5 MB safety limit
+
+
+def is_allowed_thumbnail_url(url: str) -> bool:
+    """Validate that a thumbnail URL points to HTTPS on a trusted YouTube/Google CDN."""
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url.strip())
+    except Exception:
+        return False
+
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        return False
+
+    host = parsed.hostname.lower().rstrip(".")
+    if host in ("localhost", "localhost.localdomain"):
+        return False
+
+    # Reject raw IP addresses (IPv4 / IPv6 / metadata IPs)
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        pass
+
+    return any(host == d or host.endswith(f".{d}") for d in ALLOWED_THUMB_DOMAINS)
 
 VIBE_PROFILES: Dict[str, Dict] = {
     "chill": {
@@ -108,12 +144,14 @@ def _color_vibrancy(rgb: Tuple[int, int, int]) -> float:
 
 
 async def extract_palette(client: httpx.AsyncClient, image_url: str) -> List[str]:
-    if not image_url:
+    if not is_allowed_thumbnail_url(image_url):
         return ["#181828", "#6366f1", "#ec4899"]
 
     try:
         resp = await client.get(image_url, timeout=6.0)
         resp.raise_for_status()
+        if len(resp.content) > MAX_THUMB_BYTES:
+            return ["#121324", "#6366f1", "#38bdf8"]
         img = Image.open(io.BytesIO(resp.content)).convert("RGB")
         img = img.resize((96, 96))
         quantized = img.quantize(colors=10, method=Image.Quantize.MEDIANCUT)

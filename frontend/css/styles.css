@@ -2742,3 +2742,394 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
     transform: translateY(100%) !important;
   }
 }
+
+/* ================= TRANSPORT MODES & AUTO-RADIO ================= */
+.ctrl-mode-btn {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  color: var(--text-muted);
+}
+
+.ctrl-mode-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.ctrl-mode-btn.active {
+  color: var(--accent-2);
+  background: rgba(6, 182, 212, 0.14);
+}
+
+.repeat-one-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  color: #0a0b14;
+  font-size: 0.56rem;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+.radio-toggle-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.radio-toggle-pill.active {
+  color: #0a0b14;
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
+}
+
+/* ================= QUEUE MOBILE REORDER BUTTONS ================= */
+.queue-move-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.queue-move-btn {
+  width: 22px;
+  height: 16px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.queue-move-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.queue-move-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+/* ================= LIBRARY BACKUP BAR ================= */
+.library-backup-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.backup-btn {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+
+.backup-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+/* ================= LYRICS TOOLS & SHARE CARD MODE ================= */
+.lyrics-tools {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 15;
+  display: flex;
+  gap: 6px;
+  opacity: 0.72;
+  transition: opacity 0.2s ease;
+}
+
+.lyrics-col:hover .lyrics-tools,
+.lyrics-tools:focus-within {
+  opacity: 1;
+}
+
+.app-shell.cinema-mode.cinema-idle .lyrics-tools {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lyrics-tool-pill {
+  padding: 5px 11px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+}
+
+.lyrics-tool-pill:hover,
+.lyrics-tool-pill.active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: var(--accent-2);
+}
+
+.lyric-card-bar {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+}
+
+.card-bar-action,
+.card-bar-cancel {
+  border: none;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.card-bar-action {
+  background: #ffffff;
+  color: #0a0b14;
+}
+
+.card-bar-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.card-bar-cancel {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.lyrics-container.selection-mode .lyric-line {
+  filter: none;
+  opacity: 0.72;
+  padding: 6px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+
+.lyrics-container.selection-mode .lyric-line .lyric-word {
+  color: rgba(255, 255, 255, 0.88);
+  background-image: none;
+}
+
+.lyrics-container.selection-mode .lyric-line.selected-for-card {
+  opacity: 1;
+  background: rgba(6, 182, 212, 0.18);
+  border-color: var(--accent-2);
+  transform: scale(1.01);
+}
+
+/* ================= MODALS: DIALOG, EQ, LRC, CARD ================= */
+.dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-size: 0.88rem;
+  outline: none;
+}
+
+.dialog-input:focus {
+  border-color: var(--accent-2);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-btn {
+  padding: 9px 16px;
+  border-radius: 11px;
+  border: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dialog-btn.secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.dialog-btn.primary {
+  background: #ffffff;
+  color: #0a0b14;
+}
+
+.dialog-btn.danger {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.eq-modal-card {
+  width: min(440px, 100%);
+}
+
+.fx-yt-notice {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.eq-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.eq-preset-btn,
+.cf-btn {
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-muted);
+  font-size: 0.73rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.eq-preset-btn.active,
+.cf-btn.active {
+  background: #ffffff;
+  color: #0a0b14;
+  border-color: #ffffff;
+}
+
+.eq-bands {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.eq-band-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 48px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.eq-band-row em {
+  font-style: normal;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.fx-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.fx-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.crossfade-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.lrc-modal-card {
+  width: min(480px, 100%);
+}
+
+.lrc-textarea {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+}
+
+.lrc-textarea:focus {
+  border-color: var(--accent-2);
+}
+
+.card-modal-card {
+  width: min(440px, 100%);
+}
+
+.card-preview-img {
+  width: 100%;
+  max-height: 55vh;
+  object-fit: contain;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+@media (max-width: 960px) {
+  .lyrics-tools {
+    top: 48px;
+    right: 8px;
+  }
+  .transport {
+    gap: 12px;
+  }
+  .radio-toggle-pill {
+    padding: 4px 8px;
+    font-size: 0.62rem;
+  }
+}

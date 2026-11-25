@@ -9,11 +9,15 @@
   <meta name="description" content="AURA - Immersive Spatial 3D YouTube Music Player with kinetic synchronized lyrics and dynamic vibes" />
   <title>AURA — Spatial YouTube Music</title>
 
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/aura-icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/aura-icon.svg" />
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/styles.css?v=12" />
+  <link rel="stylesheet" href="/css/styles.css?v=15" />
 
   <script type="importmap">
     {
@@ -23,7 +27,7 @@
     }
   </script>
 </head>
-<body data-vibe="synth">
+<body data-vibe="synth" data-has-track="false">
   <canvas id="bg-canvas"></canvas>
   <div class="glass-vignette"></div>
 
@@ -72,6 +76,12 @@
           <div id="import-status" class="import-status hidden"></div>
 
           <div id="playlists-list" class="track-list"></div>
+
+          <div class="library-backup-bar">
+            <button id="export-library-btn" class="backup-btn" title="Export playlists & settings as JSON">Export Backup</button>
+            <button id="import-library-btn" class="backup-btn" title="Import playlists & settings from JSON">Restore Backup</button>
+            <input id="import-library-file" type="file" accept="application/json,.json" class="hidden" />
+          </div>
         </div>
 
         <!-- Inside a Specific Playlist -->
@@ -150,6 +160,10 @@
             <button id="offset-plus" class="sync-step-btn" data-delta="0.25" title="Shift lyrics later by 0.25s" aria-label="Increase offset by 0.25s">+0.25s</button>
             <button id="offset-plus-1" class="sync-step-btn" data-delta="1.0" title="Shift lyrics later by 1.0s" aria-label="Increase offset by 1.0s">+1.0s</button>
           </div>
+          <button id="audio-fx-btn" class="glass-pill action-pill" title="5-Band EQ, Normalization & Crossfade">
+            <svg viewBox="0 0 24 24" class="icon" style="width:14px;height:14px;margin-right:5px;"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
+            <span>EQ</span>
+          </button>
           <button id="header-queue-btn" class="glass-pill action-pill desktop-only" title="View Queue">
             <svg viewBox="0 0 24 24" class="icon" style="width:14px;height:14px;margin-right:6px;"><path fill="currentColor" d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
             <span>Queue</span>
@@ -198,15 +212,22 @@
           </div>
 
           <div class="transport">
+            <button id="shuffle-btn" class="ctrl-btn ctrl-mode-btn" title="Shuffle Queue (S)" aria-label="Shuffle Queue" aria-pressed="false">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+            </button>
             <button id="prev-btn" class="ctrl-btn" title="Previous" aria-label="Previous track">
               <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
             </button>
-            <button id="play-btn" class="ctrl-btn play-main" title="Play / Pause" aria-label="Play or Pause">
+            <button id="play-btn" class="ctrl-btn play-main" title="Play / Pause (Space)" aria-label="Play or Pause">
               <svg id="play-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
               <svg id="pause-icon" class="hidden" viewBox="0 0 24 24"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
             </button>
             <button id="next-btn" class="ctrl-btn" title="Next" aria-label="Next track">
               <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+            </button>
+            <button id="repeat-btn" class="ctrl-btn ctrl-mode-btn" title="Repeat: Off (R)" aria-label="Repeat Mode">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+              <span id="repeat-one-badge" class="repeat-one-badge hidden">1</span>
             </button>
           </div>
 
@@ -215,6 +236,7 @@
               <svg viewBox="0 0 24 24" class="vol-icon"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
             </button>
             <input id="volume-bar" type="range" min="0" max="1" step="0.01" value="0.85" aria-label="Volume control" />
+            <button id="autoradio-btn" class="radio-toggle-pill active" title="Autoplay endless radio when queue ends" aria-pressed="true">Radio</button>
             <span id="sync-badge" class="sync-badge">IDLE</span>
           </div>
 
@@ -229,6 +251,18 @@
             <button id="lyrics-back-btn" class="lyrics-back-btn glass-pill">&larr; Player</button>
             <span class="lyrics-mobile-title">Live Lyrics</span>
           </div>
+
+          <div class="lyrics-tools" id="lyrics-tools">
+            <button id="paste-lrc-btn" class="lyrics-tool-pill glass-pill" title="Paste custom LRC or plain lyrics">Paste LRC</button>
+            <button id="lyric-card-btn" class="lyrics-tool-pill glass-pill" title="Select lines to create a shareable quote card">Share Card</button>
+          </div>
+
+          <div id="lyric-card-bar" class="lyric-card-bar glass-pill hidden">
+            <span id="lyric-card-count">Select 1–4 lines</span>
+            <button id="generate-card-btn" class="card-bar-action" disabled>Create PNG</button>
+            <button id="cancel-card-btn" class="card-bar-cancel">Cancel</button>
+          </div>
+
           <div id="lyrics-viewport" class="lyrics-viewport">
             <div id="lyrics-container" class="lyrics-container">
               <p class="lyrics-empty">Lyrics will synchronize word-for-word here and adapt to your song's vibe.</p>
@@ -295,6 +329,126 @@
     </div>
   </div>
 
+  <!-- Generic Glassmorphic Dialog Modal (Replaces native prompt/confirm) -->
+  <div id="dialog-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+    <div class="modal-card glass-panel">
+      <div class="modal-header">
+        <div>
+          <h3 id="dialog-title">Dialog</h3>
+          <p id="dialog-message" class="modal-sub"></p>
+        </div>
+        <button id="dialog-close-btn" class="icon-btn" aria-label="Close dialog">&times;</button>
+      </div>
+      <input id="dialog-input" class="dialog-input hidden" type="text" placeholder="" />
+      <div class="dialog-actions">
+        <button id="dialog-cancel-btn" class="dialog-btn secondary">Cancel</button>
+        <button id="dialog-confirm-btn" class="dialog-btn primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio FX / 5-Band EQ & Crossfade Modal -->
+  <div id="audio-fx-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="audio-fx-title">
+    <div class="modal-card glass-panel eq-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 id="audio-fx-title">Spatial Audio &amp; EQ</h3>
+          <p class="modal-sub">5-Band Equalizer, Loudness &amp; Crossfade</p>
+        </div>
+        <button id="audio-fx-close-btn" class="icon-btn" aria-label="Close Audio FX">&times;</button>
+      </div>
+
+      <p id="fx-yt-notice" class="fx-yt-notice hidden">Playing via YouTube Embed fallback — EQ &amp; Crossfade apply on direct audio streams.</p>
+
+      <div class="eq-presets" id="eq-presets">
+        <button data-preset="flat" class="eq-preset-btn active">Flat</button>
+        <button data-preset="bass" class="eq-preset-btn">Spatial Bass</button>
+        <button data-preset="vocal" class="eq-preset-btn">Vocal</button>
+        <button data-preset="electronic" class="eq-preset-btn">Electronic</button>
+        <button data-preset="night" class="eq-preset-btn">Late Night</button>
+      </div>
+
+      <div class="eq-bands" id="eq-bands">
+        <label class="eq-band-row">
+          <span>60 Hz</span>
+          <input type="range" min="-12" max="12" step="1" value="0" data-band="0" />
+          <em id="eq-val-0">0 dB</em>
+        </label>
+        <label class="eq-band-row">
+          <span>230 Hz</span>
+          <input type="range" min="-12" max="12" step="1" value="0" data-band="1" />
+          <em id="eq-val-1">0 dB</em>
+        </label>
+        <label class="eq-band-row">
+          <span>910 Hz</span>
+          <input type="range" min="-12" max="12" step="1" value="0" data-band="2" />
+          <em id="eq-val-2">0 dB</em>
+        </label>
+        <label class="eq-band-row">
+          <span>3.6 kHz</span>
+          <input type="range" min="-12" max="12" step="1" value="0" data-band="3" />
+          <em id="eq-val-3">0 dB</em>
+        </label>
+        <label class="eq-band-row">
+          <span>14 kHz</span>
+          <input type="range" min="-12" max="12" step="1" value="0" data-band="4" />
+          <em id="eq-val-4">0 dB</em>
+        </label>
+      </div>
+
+      <div class="fx-toggles">
+        <label class="fx-toggle-row">
+          <span>Loudness Normalization</span>
+          <input id="eq-normalize-toggle" type="checkbox" checked />
+        </label>
+        <div class="fx-toggle-row">
+          <span>Crossfade</span>
+          <div class="crossfade-pills" id="crossfade-pills">
+            <button data-cf="0" class="cf-btn active">Off</button>
+            <button data-cf="2" class="cf-btn">2s</button>
+            <button data-cf="4" class="cf-btn">4s</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom LRC Paste Modal -->
+  <div id="lrc-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="lrc-modal-title">
+    <div class="modal-card glass-panel lrc-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 id="lrc-modal-title">Custom Lyrics / LRC</h3>
+          <p id="lrc-modal-sub" class="modal-sub">Paste [mm:ss.xx] synced LRC or plain lyrics</p>
+        </div>
+        <button id="lrc-close-btn" class="icon-btn" aria-label="Close LRC modal">&times;</button>
+      </div>
+      <textarea id="lrc-modal-input" class="lrc-textarea" rows="8" placeholder="[00:12.40] Paste LRC timestamps or plain lyrics here..."></textarea>
+      <div class="dialog-actions">
+        <button id="lrc-clear-btn" class="dialog-btn secondary">Reset to Auto</button>
+        <button id="lrc-save-btn" class="dialog-btn primary">Save Lyrics</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lyric Card Preview Modal -->
+  <div id="card-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="card-modal-title">
+    <div class="modal-card glass-panel card-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 id="card-modal-title">Lyric Quote Card</h3>
+          <p class="modal-sub">Ready to save or share</p>
+        </div>
+        <button id="card-close-btn" class="icon-btn" aria-label="Close card preview">&times;</button>
+      </div>
+      <img id="card-preview-img" class="card-preview-img" alt="Lyric Quote Card Preview" />
+      <div class="dialog-actions">
+        <button id="card-share-btn" class="dialog-btn secondary hidden">Share</button>
+        <button id="card-download-btn" class="dialog-btn primary">Download PNG</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Queue Backdrop & Floating Drawer -->
   <div id="queue-drawer-backdrop" class="queue-drawer-backdrop hidden"></div>
   <aside id="queue-drawer" class="queue-drawer glass-panel hidden" aria-label="Music Queue">
@@ -353,9 +507,10 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <audio id="audio-player" crossorigin="anonymous" preload="auto"></audio>
+  <audio id="audio-player-b" crossorigin="anonymous" preload="auto"></audio>
   <div id="yt-player-box" style="position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-999;"></div>
 
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script type="module" src="/js/app.js?v=14"></script>
+  <script type="module" src="/js/app.js?v=15"></script>
 </body>
 </html>

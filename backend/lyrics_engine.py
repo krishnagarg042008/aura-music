@@ -17,11 +17,17 @@ Accuracy & Sync Philosophy:
 
 import asyncio
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
 
 import httpx
 import yaml
 from ytmusicapi import YTMusic
+
+from backend.cache import BoundedTTLCache
+
+LYRICS_CACHE: BoundedTTLCache[Dict[str, Any]] = BoundedTTLCache(maxsize=400, ttl=3600.0)
 
 # ─────────── constants / headers ───────────
 
@@ -75,13 +81,37 @@ def _parse_ts(m: str, s: str, frac: Optional[str]) -> float:
     return minutes * 60 + seconds + (int(frac) / (1000.0 if len(frac) == 3 else 100.0))
 
 
+def _strip_latin_diacritics(text: str) -> str:
+    """Fold Latin diacritics (e.g. É -> E) while preserving non-Latin combining marks (Indic matras, etc.)."""
+    out: List[str] = []
+    last_is_latin = False
+    for ch in unicodedata.normalize("NFD", text):
+        cat = unicodedata.category(ch)
+        if cat == "Mn" and last_is_latin:
+            continue
+        out.append(ch)
+        if cat != "Mn":
+            last_is_latin = ord(ch) < 0x0250 and ch.isalpha()
+    return unicodedata.normalize("NFKC", "".join(out))
+
+
 def _normalize_text(text: str) -> str:
-    return re.sub(r"[^a-zA-Z0-9\s]", " ", text.lower()).strip()
+    folded = _strip_latin_diacritics(text).lower()
+    cleaned_chars = [
+        " " if unicodedata.category(ch)[0] in ("P", "S", "Z", "C") else ch
+        for ch in folded
+    ]
+    return re.sub(r"\s+", " ", "".join(cleaned_chars)).strip()
 
 
 def _tokenize(text: str) -> set:
     norm = _normalize_text(text)
-    return set(w for w in norm.split() if len(w) > 1)
+    parts = norm.split()
+    if not parts:
+        return set()
+    # Keep multi-char tokens and all non-ASCII words; fall back to all parts for single-char titles like "U"
+    filtered = {w for w in parts if len(w) > 1 or any(ord(c) > 127 for c in w)}
+    return filtered or set(parts)
 
 
 # ─────────── strict candidate validation ───────────
@@ -282,7 +312,11 @@ def parse_lrc(lrc_text: str, track_duration: float = 240.0) -> List[Dict[str, An
         if not body:
             continue
         # Skip metadata header lines in LRC (e.g. [00:00.00] Producer: / Lyricist: / 作词 : )
-        if start < 3.0 and re.match(r"^(作词|作曲|制作|编曲|producer|lyrics|artist|album|by|encoded|offset|ti|ar|al):", body, re.I):
+        if start < 3.0 and re.match(
+            r"^(作词|作曲|制作|编曲|混音|母带|producer|lyricist|lyrics|artist|album|composer|arranger|by|encoded|offset|ti|ar|al)\s*[:：]",
+            body,
+            re.I,
+        ):
             continue
         raw_entries.append({"start": start, "body": body})
 
@@ -560,8 +594,10 @@ async def _lyrics_ovh_fallback(
 ) -> str:
     """Fetch plain lyrics from lyrics.ovh as a last resort."""
     try:
-        safe_artist = artist.replace("/", " ")
-        safe_title = title.replace("/", " ")
+        safe_artist = quote(artist.replace("/", " ").strip(), safe="")
+        safe_title = quote(title.replace("/", " ").strip(), safe="")
+        if not safe_artist or not safe_title:
+            return ""
         resp = await client.get(
             f"https://api.lyrics.ovh/v1/{safe_artist}/{safe_title}",
             timeout=5.0,
@@ -583,6 +619,33 @@ EMPTY_RESULT: Dict[str, Any] = {
 }
 
 
+def _extract_lrclib_synced(rec: Optional[Dict[str, Any]], duration: Optional[int]) -> Optional[Dict[str, Any]]:
+    if not rec:
+        return None
+    if rec.get("hasWordSync") and rec.get("lyricsfile"):
+        y_lines = parse_lyricsfile_yaml(rec["lyricsfile"])
+        if y_lines:
+            return {
+                "synced": True,
+                "word_native": True,
+                "smart_sync": False,
+                "plain_text": rec.get("plainLyrics") or "",
+                "lines": y_lines,
+            }
+    if rec.get("syncedLyrics"):
+        l_lines = parse_lrc(rec["syncedLyrics"], float(duration or 240))
+        if l_lines:
+            is_native = "<" in rec["syncedLyrics"] and ">" in rec["syncedLyrics"]
+            return {
+                "synced": True,
+                "word_native": is_native,
+                "smart_sync": False,
+                "plain_text": rec.get("plainLyrics") or "",
+                "lines": l_lines,
+            }
+    return None
+
+
 async def fetch_synced_lyrics(
     client: httpx.AsyncClient,
     title: str,
@@ -591,101 +654,82 @@ async def fetch_synced_lyrics(
     video_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Multi-source lyrics engine with strict matching.
+    Multi-source lyrics engine with strict matching, concurrent search, and caching.
 
     Pipeline:
       1. LRCLIB exact match (/api/get) with cleaned title & artist.
-      2. LRCLIB fuzzy search (/api/search) strictly filtered with is_valid_match.
-      3. NetEase CloudSearch strictly filtered with is_valid_match.
-      4. If verified synced LRC is found: return immediately with synced=True.
-      5. Fallback for plain text:
+      2. LRCLIB fuzzy search (/api/search) + NetEase CloudSearch in parallel (strictly validated).
+      3. If verified synced LRC is found: return immediately with synced=True.
+      4. Fallback for plain text:
          - YouTube Music native official lyrics (via video_id or search)
          - LRCLIB plain text
          - NetEase plain text
          - lyrics.ovh plain text
          Delivered with synced: False in clean Plain Lyrics Mode (no fake auto-pacing).
-      6. Mismatched artists (e.g. Aphex Twin for Devi Sri Prasad) are NEVER returned.
+      5. Mismatched artists (e.g. Aphex Twin for Devi Sri Prasad) are NEVER returned.
     """
     clean_title = clean_track_title(title)
     primary_artist = _clean_artist(artist)
+    cache_key = (video_id or "", clean_title.lower(), primary_artist.lower(), int(duration or 0))
+    cached = LYRICS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
 
     collected_plain: str = ""
 
-    # ── 1. LRCLIB exact match ──
-    rec = await _lrclib_exact(client, clean_title, primary_artist, duration)
-    if not rec and clean_title != title.strip():
-        rec = await _lrclib_exact(client, title.strip(), primary_artist, duration)
+    # ── 1. LRCLIB exact match (clean + raw in parallel when different) ──
+    exact_tasks = [_lrclib_exact(client, clean_title, primary_artist, duration)]
+    if clean_title != title.strip():
+        exact_tasks.append(_lrclib_exact(client, title.strip(), primary_artist, duration))
+    exact_results = await asyncio.gather(*exact_tasks, return_exceptions=True)
 
-    if rec:
-        if rec.get("hasWordSync") and rec.get("lyricsfile"):
-            y_lines = parse_lyricsfile_yaml(rec["lyricsfile"])
-            if y_lines:
-                return {
-                    "synced": True,
-                    "word_native": True,
-                    "smart_sync": False,
-                    "plain_text": rec.get("plainLyrics") or "",
-                    "lines": y_lines,
-                }
-        if rec.get("syncedLyrics"):
-            l_lines = parse_lrc(rec["syncedLyrics"], float(duration or 240))
-            if l_lines:
-                is_native = "<" in rec["syncedLyrics"] and ">" in rec["syncedLyrics"]
-                return {
-                    "synced": True,
-                    "word_native": is_native,
-                    "smart_sync": False,
-                    "plain_text": rec.get("plainLyrics") or "",
-                    "lines": l_lines,
-                }
-        if rec.get("plainLyrics"):
-            collected_plain = rec["plainLyrics"].strip()
+    for rec in exact_results:
+        if isinstance(rec, dict):
+            parsed = _extract_lrclib_synced(rec, duration)
+            if parsed:
+                LYRICS_CACHE.set(cache_key, parsed)
+                return parsed
+            if not collected_plain and rec.get("plainLyrics"):
+                collected_plain = rec["plainLyrics"].strip()
 
-    # ── 2. LRCLIB fuzzy search (with strict candidate validation) ──
+    # ── 2 & 3. LRCLIB fuzzy search + NetEase CloudSearch concurrently ──
     q_full = f"{clean_title} {primary_artist}".strip()
-    rec2 = await _lrclib_search(client, q_full, clean_title, primary_artist, duration)
-    if not rec2 and clean_title != q_full:
-        rec2 = await _lrclib_search(client, clean_title, clean_title, primary_artist, duration)
+    lrc_search_tasks = [_lrclib_search(client, q_full, clean_title, primary_artist, duration)]
+    if clean_title != q_full:
+        lrc_search_tasks.append(_lrclib_search(client, clean_title, clean_title, primary_artist, duration))
 
-    if rec2:
-        if rec2.get("hasWordSync") and rec2.get("lyricsfile"):
-            y_lines = parse_lyricsfile_yaml(rec2["lyricsfile"])
-            if y_lines:
-                return {
-                    "synced": True,
-                    "word_native": True,
-                    "smart_sync": False,
-                    "plain_text": rec2.get("plainLyrics") or "",
-                    "lines": y_lines,
-                }
-        if rec2.get("syncedLyrics"):
-            l_lines = parse_lrc(rec2["syncedLyrics"], float(duration or 240))
+    search_results = await asyncio.gather(
+        *lrc_search_tasks,
+        _netease_search(client, clean_title, primary_artist, duration),
+        return_exceptions=True,
+    )
+
+    netease_res = search_results[-1]
+    for rec2 in search_results[:-1]:
+        if isinstance(rec2, dict):
+            parsed = _extract_lrclib_synced(rec2, duration)
+            if parsed:
+                LYRICS_CACHE.set(cache_key, parsed)
+                return parsed
+            if not collected_plain and rec2.get("plainLyrics"):
+                collected_plain = rec2["plainLyrics"].strip()
+
+    if isinstance(netease_res, tuple) and len(netease_res) == 2:
+        ne_lrc, ne_plain = netease_res
+        if ne_lrc:
+            l_lines = parse_lrc(ne_lrc, float(duration or 240))
             if l_lines:
-                is_native = "<" in rec2["syncedLyrics"] and ">" in rec2["syncedLyrics"]
-                return {
+                res = {
                     "synced": True,
-                    "word_native": is_native,
+                    "word_native": False,
                     "smart_sync": False,
-                    "plain_text": rec2.get("plainLyrics") or "",
+                    "plain_text": collected_plain or "",
                     "lines": l_lines,
                 }
-        if not collected_plain and rec2.get("plainLyrics"):
-            collected_plain = rec2["plainLyrics"].strip()
-
-    # ── 3. NetEase CloudMusic search (strictly validated) ──
-    ne_lrc, ne_plain = await _netease_search(client, clean_title, primary_artist, duration)
-    if ne_lrc:
-        l_lines = parse_lrc(ne_lrc, float(duration or 240))
-        if l_lines:
-            return {
-                "synced": True,
-                "word_native": False,
-                "smart_sync": False,
-                "plain_text": collected_plain or "",
-                "lines": l_lines,
-            }
-    if not collected_plain and ne_plain:
-        collected_plain = ne_plain.strip()
+                LYRICS_CACHE.set(cache_key, res)
+                return res
+        if not collected_plain and ne_plain:
+            collected_plain = ne_plain.strip()
 
     # ── 4. YouTube Music Official Lyrics Fallback ──
     if not collected_plain:
@@ -703,6 +747,9 @@ async def fetch_synced_lyrics(
 
     # ── 6. Deliver Genuine Plain Lyrics (synced: False) ──
     if collected_plain:
-        return _wrap_plain(collected_plain)
+        wrapped = _wrap_plain(collected_plain)
+        LYRICS_CACHE.set(cache_key, wrapped)
+        return wrapped
 
+    LYRICS_CACHE.set(cache_key, EMPTY_RESULT, ttl=300.0)
     return EMPTY_RESULT
