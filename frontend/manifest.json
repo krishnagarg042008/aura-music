@@ -1,0 +1,19 @@
+{
+  "name": "AURA — Spatial YouTube Music",
+  "short_name": "AURA Music",
+  "description": "Immersive spatial 3D YouTube Music player with synchronized kinetic lyrics and adaptive vibes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0b14",
+  "theme_color": "#0a0b14",
+  "icons": [
+    {
+      "src": "/icons/aura-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

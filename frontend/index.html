@@ -9,11 +9,15 @@
   <meta name="description" content="AURA - Immersive Spatial 3D YouTube Music Player with kinetic synchronized lyrics and dynamic vibes" />
   <title>AURA — Spatial YouTube Music</title>
 
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/aura-icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/aura-icon.svg" />
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Shippori+Mincho:wght@600;700&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&family=Zen+Kaku+Gothic+New:wght@700&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/styles.css?v=5" />
+  <link rel="stylesheet" href="/css/styles.css?v=22" />
 
   <script type="importmap">
     {
@@ -29,8 +33,11 @@
   </script>
   <script defer src="/_vercel/insights/script.js"></script>
 </head>
-<body data-vibe="synth">
+<body data-vibe="synth" data-has-track="false" data-visual-intensity="balanced">
   <canvas id="bg-canvas"></canvas>
+  <div id="ambient-cover-layer" class="ambient-cover-layer" aria-hidden="true">
+    <img id="ambient-cover-img" alt="" referrerpolicy="no-referrer" />
+  </div>
   <div class="glass-vignette"></div>
 
   <div id="app" class="app-shell" data-mobile-view="player">
@@ -45,17 +52,29 @@
       <div class="nav-tabs">
         <button id="tab-discover" class="nav-tab active">Discover</button>
         <button id="tab-playlists" class="nav-tab">Playlists</button>
+        <button id="tab-queue" class="nav-tab">Queue (<span id="tab-queue-count">0</span>)</button>
       </div>
 
       <!-- DISCOVER VIEW -->
       <div id="discover-panel" class="sidebar-panel">
         <div class="search-box">
           <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 14z"/></svg>
-          <input id="search-input" type="text" placeholder="Search any YouTube song..." autocomplete="off" />
+          <input id="search-input" type="text" placeholder="Search song or paste Spotify / Apple link..." autocomplete="off" />
           <button id="clear-search" class="icon-btn hidden" title="Clear">&times;</button>
         </div>
 
         <div class="section-label" id="list-heading">Curated Spatial Mix</div>
+        <div id="external-import-banner" class="external-import-banner hidden">
+          <div class="ext-banner-top">
+            <span id="ext-banner-badge" class="ext-provider-badge">SPOTIFY</span>
+            <span id="ext-banner-info" class="ext-banner-info">0 tracks matched</span>
+          </div>
+          <div class="ext-banner-actions">
+            <button id="ext-play-all-btn" class="ext-banner-btn primary" type="button">Play</button>
+            <button id="ext-queue-all-btn" class="ext-banner-btn" type="button">Queue</button>
+            <button id="ext-save-pl-btn" class="ext-banner-btn" type="button">+ Playlist</button>
+          </div>
+        </div>
         <div id="track-list" class="track-list">
           <div class="skeleton-loader">Loading YouTube catalog...</div>
         </div>
@@ -67,16 +86,22 @@
         <div id="playlist-home" class="playlist-subview">
           <div class="playlist-actions-bar">
             <button id="new-playlist-btn" class="pl-action-btn">+ New Playlist</button>
-            <button id="toggle-import-btn" class="pl-action-btn secondary">Import YT Link</button>
+            <button id="toggle-import-btn" class="pl-action-btn secondary" title="Import track, album, or playlist from YouTube, Spotify, or Apple Music">Import Link</button>
           </div>
 
           <div id="import-box" class="import-box hidden">
-            <input id="import-url-input" type="text" placeholder="Paste YouTube / YT Music playlist URL..." />
+            <input id="import-url-input" type="text" placeholder="YouTube, Spotify, or Apple Music URL..." />
             <button id="import-submit-btn">Import</button>
           </div>
           <div id="import-status" class="import-status hidden"></div>
 
           <div id="playlists-list" class="track-list"></div>
+
+          <div class="library-backup-bar">
+            <button id="export-library-btn" class="backup-btn" title="Export playlists & settings as JSON">Export Backup</button>
+            <button id="import-library-btn" class="backup-btn" title="Import playlists & settings from JSON">Restore Backup</button>
+            <input id="import-library-file" type="file" accept="application/json,.json" class="hidden" />
+          </div>
         </div>
 
         <!-- Inside a Specific Playlist -->
@@ -92,31 +117,100 @@
           <div id="pl-tracks-list" class="track-list"></div>
         </div>
       </div>
+
+      <!-- QUEUE VIEW (SIDEBAR) -->
+      <div id="queue-sidebar-panel" class="sidebar-panel hidden">
+        <div class="queue-panel-header">
+          <div class="queue-panel-meta">
+            <div class="queue-panel-title">Play Queue</div>
+            <div id="sidebar-queue-sub" class="queue-panel-sub">0 tracks upcoming</div>
+          </div>
+          <button id="sidebar-queue-clear-btn" class="glass-pill queue-pill-btn" title="Clear upcoming tracks">Clear</button>
+        </div>
+
+        <div class="section-label">Currently Playing</div>
+        <div id="sidebar-queue-current" class="queue-current-card"></div>
+
+        <div class="queue-section-header">
+          <div class="section-label" style="margin: 0;">Up Next</div>
+          <span id="sidebar-queue-up-next-badge" class="queue-up-next-badge">0 tracks</span>
+        </div>
+        <div id="sidebar-queue-list" class="queue-track-list"></div>
+      </div>
     </aside>
 
     <main class="stage" id="stage-panel">
       <header class="stage-header">
-        <div class="vibe-bar glass-pill" id="vibe-bar">
-          <span class="vibe-dot"></span>
-          <span class="vibe-title" id="vibe-label">Neon Synth</span>
-          <div class="vibe-pills" id="vibe-pills">
-            <button data-vibe="chill">Chill</button>
-            <button data-vibe="hype">Hype</button>
-            <button data-vibe="synth" class="active">Synth</button>
-            <button data-vibe="melancholy">Rain</button>
-            <button data-vibe="rock">Rock</button>
-            <button data-vibe="romantic">Romance</button>
+        <div class="vibe-menu-wrap" id="vibe-menu-wrap">
+          <button id="vibe-trigger" class="vibe-trigger glass-pill" type="button" aria-haspopup="true" aria-expanded="false" title="Switch spatial mood vibe">
+            <span class="vibe-dot"></span>
+            <span class="vibe-title" id="vibe-label">Neon Synth</span>
+            <svg viewBox="0 0 24 24" class="vibe-chevron" aria-hidden="true"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+          </button>
+          <div id="vibe-popover" class="header-popover vibe-popover glass-panel hidden" role="menu">
+            <div class="popover-header-row">
+              <span class="popover-title">Spatial Vibe</span>
+            </div>
+            <div class="vibe-pills" id="vibe-pills">
+              <button data-vibe="chill">Chill</button>
+              <button data-vibe="hype">Hype</button>
+              <button data-vibe="synth" class="active">Synth</button>
+              <button data-vibe="melancholy">Rain</button>
+              <button data-vibe="rock">Rock</button>
+              <button data-vibe="romantic">Romance</button>
+              <button data-vibe="spiritual">Spiritual</button>
+              <button data-vibe="cosmic">Cosmic</button>
+              <button data-vibe="anime">Anime</button>
+            </div>
           </div>
         </div>
 
         <div class="header-actions">
-          <div class="sync-tuner glass-pill" title="Adjust lyrics timing for YouTube intros">
-            <span>Sync</span>
-            <button id="offset-minus" aria-label="Decrease offset by 0.25s">-0.25s</button>
-            <span id="offset-val">0.00s</span>
-            <button id="offset-plus" aria-label="Increase offset by 0.25s">+0.25s</button>
+          <div class="sync-menu-wrap" id="sync-menu-wrap">
+            <button id="sync-trigger" class="sync-trigger glass-pill" type="button" aria-haspopup="true" aria-expanded="false" title="Fine-tune lyrics sync ([ / ] hotkeys, \ reset)">
+              <span class="sync-label">Sync</span>
+              <span id="offset-val" class="offset-badge">0.00s</span>
+            </button>
+            <div id="sync-popover" class="header-popover sync-popover glass-panel hidden" role="menu">
+              <div class="popover-header-row">
+                <span class="popover-title">Lyrics Sync</span>
+                <button id="sync-reset-btn" class="sync-reset-btn" type="button" title="Reset sync to 0.00s">Reset</button>
+              </div>
+              <div class="sync-tuner-row">
+                <button id="offset-minus-1" class="sync-step-btn" data-delta="-1.0" title="Shift lyrics earlier by 1.0s" aria-label="Decrease offset by 1.0s">-1.0s</button>
+                <button id="offset-minus" class="sync-step-btn" data-delta="-0.25" title="Shift lyrics earlier by 0.25s" aria-label="Decrease offset by 0.25s">-0.25s</button>
+                <span id="sync-popover-val" class="offset-badge" title="Click to reset sync to 0.00s">0.00s</span>
+                <button id="offset-plus" class="sync-step-btn" data-delta="0.25" title="Shift lyrics later by 0.25s" aria-label="Increase offset by 0.25s">+0.25s</button>
+                <button id="offset-plus-1" class="sync-step-btn" data-delta="1.0" title="Shift lyrics later by 1.0s" aria-label="Increase offset by 1.0s">+1.0s</button>
+              </div>
+              <div class="sync-popover-hint">Hotkeys: [ / ] shift &middot; Shift &plusmn;0.5s &middot; \ reset</div>
+            </div>
           </div>
-          <button id="immersion-btn" class="glass-pill action-pill desktop-only">Cinema Mode</button>
+          <button id="audio-fx-btn" class="glass-pill action-pill" title="EQ, Crossfade, Themes &amp; Ambient Visuals">
+            <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
+            <span>FX</span>
+          </button>
+          <button id="immersion-btn" class="glass-pill action-pill desktop-only" title="Enter Cinema Mode">
+            <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+            <span class="immersion-text">Cinema</span>
+          </button>
+        </div>
+
+        <!-- Cinema Mode Controls (Replaces header-actions seamlessly) -->
+        <div id="cinema-hud" class="cinema-hud hidden" aria-label="Cinema Mode Controls">
+          <button id="cinema-queue-btn" class="cinema-hud-pill glass-pill" title="Toggle Queue">
+            <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+            <span>Queue (<span id="cinema-queue-count">0</span>)</span>
+          </button>
+          <button id="cinema-exit-btn" class="cinema-hud-pill glass-pill" title="Exit Cinema Mode (Esc)">
+            <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            <span>Exit</span>
+          </button>
+          <button id="cinema-fs-btn" class="cinema-hud-pill glass-pill" title="Toggle Fullscreen">
+            <svg viewBox="0 0 24 24" class="icon fs-expand"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+            <svg viewBox="0 0 24 24" class="icon fs-compress hidden"><path fill="currentColor" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-14v3h3v2h-5V5h2z"/></svg>
+            <span class="fs-text">Fullscreen</span>
+          </button>
         </div>
       </header>
 
@@ -124,6 +218,7 @@
         <section class="now-playing-col" id="player-view-col">
           <div class="art-container" id="art-container">
             <div class="cover-ring"></div>
+            <canvas id="cover-halo-canvas" class="cover-halo-canvas" aria-hidden="true"></canvas>
             <img id="album-art" src="" alt="Album Art" referrerpolicy="no-referrer" class="album-art hidden" />
             <div id="art-placeholder" class="art-placeholder">
               <span>Search &amp; play any song</span>
@@ -145,6 +240,10 @@
               <button id="add-to-pl-btn" class="mini-round-btn" title="Add to Playlist" aria-label="Add to Playlist">
                 <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
               </button>
+              <button id="queue-toggle-btn" class="mini-round-btn" title="View Queue" aria-label="View Queue">
+                <svg viewBox="0 0 24 24"><path fill="currentColor" d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+                <span id="queue-badge" class="queue-mini-badge hidden">0</span>
+              </button>
             </div>
           </div>
 
@@ -155,15 +254,22 @@
           </div>
 
           <div class="transport">
+            <button id="shuffle-btn" class="ctrl-btn ctrl-mode-btn" title="Shuffle Queue (S)" aria-label="Shuffle Queue" aria-pressed="false">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+            </button>
             <button id="prev-btn" class="ctrl-btn" title="Previous" aria-label="Previous track">
               <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
             </button>
-            <button id="play-btn" class="ctrl-btn play-main" title="Play / Pause" aria-label="Play or Pause">
+            <button id="play-btn" class="ctrl-btn play-main" title="Play / Pause (Space)" aria-label="Play or Pause">
               <svg id="play-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
               <svg id="pause-icon" class="hidden" viewBox="0 0 24 24"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
             </button>
             <button id="next-btn" class="ctrl-btn" title="Next" aria-label="Next track">
               <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+            </button>
+            <button id="repeat-btn" class="ctrl-btn ctrl-mode-btn" title="Repeat: Off (R)" aria-label="Repeat Mode">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+              <span id="repeat-one-badge" class="repeat-one-badge hidden">1</span>
             </button>
           </div>
 
@@ -172,6 +278,7 @@
               <svg viewBox="0 0 24 24" class="vol-icon"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
             </button>
             <input id="volume-bar" type="range" min="0" max="1" step="0.01" value="0.85" aria-label="Volume control" />
+            <button id="autoradio-btn" class="radio-toggle-pill active" title="Autoplay endless radio when queue ends" aria-pressed="true">Radio</button>
             <span id="sync-badge" class="sync-badge">IDLE</span>
           </div>
 
@@ -186,6 +293,19 @@
             <button id="lyrics-back-btn" class="lyrics-back-btn glass-pill">&larr; Player</button>
             <span class="lyrics-mobile-title">Live Lyrics</span>
           </div>
+
+          <div class="lyrics-tools" id="lyrics-tools">
+            <button id="script-toggle-btn" class="lyrics-tool-pill glass-pill hidden" title="Toggle Hinglish / Dual-Script display">Hinglish</button>
+            <button id="paste-lrc-btn" class="lyrics-tool-pill glass-pill" title="Paste custom LRC or plain lyrics">Paste LRC</button>
+            <button id="lyric-card-btn" class="lyrics-tool-pill glass-pill" title="Select lines to create a shareable quote card">Share Card</button>
+          </div>
+
+          <div id="lyric-card-bar" class="lyric-card-bar glass-pill hidden">
+            <span id="lyric-card-count">Select 1–4 lines</span>
+            <button id="generate-card-btn" class="card-bar-action" disabled>Create PNG</button>
+            <button id="cancel-card-btn" class="card-bar-cancel">Cancel</button>
+          </div>
+
           <div id="lyrics-viewport" class="lyrics-viewport">
             <div id="lyrics-container" class="lyrics-container">
               <p class="lyrics-empty">Lyrics will synchronize word-for-word here and adapt to your song's vibe.</p>
@@ -252,13 +372,220 @@
     </div>
   </div>
 
+  <!-- Generic Glassmorphic Dialog Modal (Replaces native prompt/confirm) -->
+  <div id="dialog-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+    <div class="modal-card glass-panel">
+      <div class="modal-header">
+        <div>
+          <h3 id="dialog-title">Dialog</h3>
+          <p id="dialog-message" class="modal-sub"></p>
+        </div>
+        <button id="dialog-close-btn" class="icon-btn" aria-label="Close dialog">&times;</button>
+      </div>
+      <input id="dialog-input" class="dialog-input hidden" type="text" placeholder="" />
+      <div class="dialog-actions">
+        <button id="dialog-cancel-btn" class="dialog-btn secondary">Cancel</button>
+        <button id="dialog-confirm-btn" class="dialog-btn primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio FX / 5-Band EQ & Crossfade Modal -->
+  <div id="audio-fx-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="audio-fx-title">
+    <div class="modal-card glass-panel eq-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 id="audio-fx-title">Spatial Audio &amp; Visuals</h3>
+          <p class="modal-sub">5-Band Equalizer, Crossfade &amp; Ambient Engine</p>
+        </div>
+        <button id="audio-fx-close-btn" class="icon-btn" aria-label="Close Audio FX">&times;</button>
+      </div>
+
+      <p id="fx-yt-notice" class="fx-yt-notice hidden">Playing via YouTube Embed fallback — EQ &amp; Crossfade apply on direct audio streams.</p>
+
+      <div class="eq-presets" id="eq-presets">
+        <button data-preset="flat" class="eq-preset-btn active">Flat</button>
+        <button data-preset="bass" class="eq-preset-btn">Spatial Bass</button>
+        <button data-preset="vocal" class="eq-preset-btn">Vocal</button>
+        <button data-preset="electronic" class="eq-preset-btn">Electronic</button>
+        <button data-preset="night" class="eq-preset-btn">Late Night</button>
+      </div>
+
+      <div class="eq-bands" id="eq-bands">
+        <label class="eq-band-row">
+          <span>60 Hz</span>
+          <input type="range" min="-12" max="12" step="1" value="0" data-band="0" />
+          <em id="eq-val-0">0 dB</em>
+        </label>
+        <label class="eq-band-row">
+          <span>230 Hz</span>
+          <input type="range" min="-12" max="12" step="1" value="0" data-band="1" />
+          <em id="eq-val-1">0 dB</em>
+        </label>
+        <label class="eq-band-row">
+          <span>910 Hz</span>
+          <input type="range" min="-12" max="12" step="1" value="0" data-band="2" />
+          <em id="eq-val-2">0 dB</em>
+        </label>
+        <label class="eq-band-row">
+          <span>3.6 kHz</span>
+          <input type="range" min="-12" max="12" step="1" value="0" data-band="3" />
+          <em id="eq-val-3">0 dB</em>
+        </label>
+        <label class="eq-band-row">
+          <span>14 kHz</span>
+          <input type="range" min="-12" max="12" step="1" value="0" data-band="4" />
+          <em id="eq-val-4">0 dB</em>
+        </label>
+      </div>
+
+      <div class="fx-toggles">
+        <label class="fx-toggle-row">
+          <span>Loudness Normalization</span>
+          <input id="eq-normalize-toggle" type="checkbox" checked />
+        </label>
+        <div class="fx-toggle-row">
+          <span>Crossfade</span>
+          <div class="crossfade-pills" id="crossfade-pills">
+            <button data-cf="0" class="cf-btn active">Off</button>
+            <button data-cf="2" class="cf-btn">2s</button>
+            <button data-cf="4" class="cf-btn">4s</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="fx-toggles">
+        <div class="fx-section-title">Ambient Vibes &amp; Visuals</div>
+        <div class="fx-toggle-row">
+          <span>UI Theme Skin</span>
+          <div class="crossfade-pills" id="theme-skin-pills">
+            <button data-skin="default" class="skin-btn active">Default</button>
+            <button data-skin="anime" class="skin-btn">Anime UI</button>
+            <button data-skin="manga" class="skin-btn">Manga Ink</button>
+          </div>
+        </div>
+        <div class="fx-toggle-row">
+          <span>Visual Intensity</span>
+          <div class="crossfade-pills" id="vis-intensity-pills">
+            <button data-intensity="minimal" class="vis-int-btn">Minimal</button>
+            <button data-intensity="balanced" class="vis-int-btn active">Balanced</button>
+            <button data-intensity="vivid" class="vis-int-btn">Vivid</button>
+          </div>
+        </div>
+        <label class="fx-toggle-row">
+          <span>Blurred Album Canvas</span>
+          <input id="vis-backdrop-toggle" type="checkbox" checked />
+        </label>
+        <label class="fx-toggle-row">
+          <span>Mood Particles</span>
+          <input id="vis-particles-toggle" type="checkbox" checked />
+        </label>
+        <label class="fx-toggle-row">
+          <span>Cover Spectrum Halo</span>
+          <input id="vis-halo-toggle" type="checkbox" checked />
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom LRC Paste Modal -->
+  <div id="lrc-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="lrc-modal-title">
+    <div class="modal-card glass-panel lrc-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 id="lrc-modal-title">Custom Lyrics / LRC</h3>
+          <p id="lrc-modal-sub" class="modal-sub">Paste [mm:ss.xx] synced LRC or plain lyrics</p>
+        </div>
+        <button id="lrc-close-btn" class="icon-btn" aria-label="Close LRC modal">&times;</button>
+      </div>
+      <textarea id="lrc-modal-input" class="lrc-textarea" rows="8" placeholder="[00:12.40] Paste LRC timestamps or plain lyrics here..."></textarea>
+      <div class="dialog-actions">
+        <button id="lrc-clear-btn" class="dialog-btn secondary">Reset to Auto</button>
+        <button id="lrc-save-btn" class="dialog-btn primary">Save Lyrics</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lyric Card Preview Modal -->
+  <div id="card-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="card-modal-title">
+    <div class="modal-card glass-panel card-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 id="card-modal-title">Lyric Quote Card</h3>
+          <p class="modal-sub">Ready to save or share</p>
+        </div>
+        <button id="card-close-btn" class="icon-btn" aria-label="Close card preview">&times;</button>
+      </div>
+      <img id="card-preview-img" class="card-preview-img" alt="Lyric Quote Card Preview" />
+      <div class="dialog-actions">
+        <button id="card-share-btn" class="dialog-btn secondary hidden">Share</button>
+        <button id="card-download-btn" class="dialog-btn primary">Download PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Queue Backdrop & Floating Drawer -->
+  <div id="queue-drawer-backdrop" class="queue-drawer-backdrop hidden"></div>
+  <aside id="queue-drawer" class="queue-drawer glass-panel hidden" aria-label="Music Queue">
+    <div class="queue-header">
+      <div class="queue-title-wrap">
+        <div class="queue-header-title">Play Queue</div>
+        <div id="queue-count-sub" class="queue-count-sub">0 tracks upcoming</div>
+      </div>
+      <div class="queue-header-actions">
+        <button id="queue-clear-btn" class="glass-pill queue-pill-btn" title="Clear upcoming tracks">Clear Queue</button>
+        <button id="queue-close-btn" class="icon-btn queue-close-btn" title="Close Queue">&times;</button>
+      </div>
+    </div>
+
+    <div class="queue-body">
+      <!-- Currently Playing Section -->
+      <div class="queue-section-label">Currently Playing</div>
+      <div id="queue-current-card" class="queue-current-card"></div>
+
+      <!-- Up Next Section -->
+      <div class="queue-section-header">
+        <div class="queue-section-label">Up Next</div>
+        <span id="queue-up-next-badge" class="queue-up-next-badge">0 tracks</span>
+      </div>
+
+      <div id="queue-up-next-list" class="queue-track-list"></div>
+    </div>
+  </aside>
+
+  <!-- Context Menu for Songs -->
+  <div id="context-menu" class="context-menu glass-panel hidden" role="menu">
+    <button class="context-menu-item" data-action="play-now">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+      <span>Play Now</span>
+    </button>
+    <button class="context-menu-item" data-action="play-next">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+      <span>Play Next</span>
+    </button>
+    <button class="context-menu-item" data-action="add-queue">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+      <span>Add to Queue</span>
+    </button>
+    <div class="context-menu-divider"></div>
+    <button class="context-menu-item" data-action="add-playlist">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M14 10H3v2h11v-2zm0-4H3v2h11V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3 16h7v-2H3v2z"/></svg>
+      <span>Add to Playlist</span>
+    </button>
+    <button class="context-menu-item hidden" data-action="remove-item">
+      <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      <span id="context-remove-text">Remove</span>
+    </button>
+  </div>
+
   <!-- Toast Notification -->
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <audio id="audio-player" crossorigin="anonymous" preload="auto"></audio>
+  <audio id="audio-player-b" crossorigin="anonymous" preload="auto"></audio>
   <div id="yt-player-box" style="position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-999;"></div>
 
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script type="module" src="/js/app.js?v=10"></script>
+  <script type="module" src="/js/app.js?v=22"></script>
 </body>
 </html>
