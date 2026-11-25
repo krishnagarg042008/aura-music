@@ -71,6 +71,20 @@ UNWANTED_VERSION_MODIFIERS = (
     "ringtone",
 )
 
+SOFT_VERSION_MODIFIERS = (
+    "remix",
+    "mashup",
+    "lofi",
+    "lo-fi",
+    "unplugged",
+)
+
+_SCHEMELESS_EXTERNAL_RE = re.compile(
+    r"^(?:(?:open|play)\.spotify\.com|spotify\.link|spotify\.app\.link|spoti\.fi|"
+    r"(?:geo\.)?(?:music|itunes)\.apple\.com|apple\.co)/",
+    re.I,
+)
+
 
 class _MetaAndScriptParser(HTMLParser):
     """Lightweight stdlib HTML parser for <title>, <meta>, and embedded JSON scripts."""
@@ -149,15 +163,25 @@ def _validate_https_url(url: str, allowed_hosts: set[str]) -> ParseResult:
     return parsed
 
 
+def _normalize_external_raw(raw_url: str) -> str:
+    raw = (raw_url or "").strip()
+    if raw.lower().startswith("http://"):
+        raw = "https://" + raw[7:]
+    elif _SCHEMELESS_EXTERNAL_RE.match(raw):
+        raw = "https://" + raw
+    return raw
+
+
 def is_external_music_url(raw_url: str) -> bool:
     """Return True if raw_url looks like a Spotify or Apple Music link or URI."""
     raw = (raw_url or "").strip()
     if raw.lower().startswith(("spotify:track:", "spotify:album:", "spotify:playlist:")):
         return True
+    normalized = _normalize_external_raw(raw)
     try:
-        parsed = urlparse(raw)
+        parsed = urlparse(normalized)
         host = (parsed.hostname or "").lower().rstrip(".")
-        return parsed.scheme.lower() in ("http", "https") and _is_safe_host(host, ALL_ALLOWED_HOSTS)
+        return parsed.scheme.lower() == "https" and _is_safe_host(host, ALL_ALLOWED_HOSTS)
     except Exception:
         return False
 
@@ -171,10 +195,10 @@ def parse_external_url(raw_url: str) -> Dict[str, Any]:
     if not raw:
         raise ValueError("Please provide a Spotify or Apple Music URL.")
 
-    # Handle spotify:<kind>:<id> URIs directly
-    uri_match = re.fullmatch(r"spotify:(track|album|playlist):([A-Za-z0-9]{10,40})", raw)
+    # Handle spotify:<kind>:<id> URIs directly (case-insensitive prefix)
+    uri_match = re.fullmatch(r"spotify:(track|album|playlist):([A-Za-z0-9]{10,40})", raw, flags=re.I)
     if uri_match:
-        kind, item_id = uri_match.group(1), uri_match.group(2)
+        kind, item_id = uri_match.group(1).lower(), uri_match.group(2)
         return {
             "provider": "spotify",
             "kind": kind,
@@ -184,9 +208,7 @@ def parse_external_url(raw_url: str) -> Dict[str, Any]:
             "canonical_url": f"https://open.spotify.com/{kind}/{item_id}",
         }
 
-    # Normalize missing scheme only for explicit spotify/apple domains? No — require explicit scheme or upgrade http:// safely
-    if raw.lower().startswith("http://"):
-        raw = "https://" + raw[7:]
+    raw = _normalize_external_raw(raw)
 
     parsed = _validate_https_url(raw, ALL_ALLOWED_HOSTS)
     host = (parsed.hostname or "").lower().rstrip(".")
@@ -346,13 +368,33 @@ def _parse_spotify_embed_entity(entity: Dict[str, Any], expected_kind: str) -> O
             "source_tracks": [{"title": title, "artist": artist, "duration": duration}],
         }
 
+    header_artist = _clean_space(entity.get("subtitle") or "")
+    if not header_artist and isinstance(entity.get("artists"), list):
+        header_artist = ", ".join(
+            _clean_space(a.get("name", ""))
+            for a in entity["artists"]
+            if isinstance(a, dict) and a.get("name")
+        )
+
     track_list = entity.get("trackList") or []
     tracks: List[Dict[str, Any]] = []
     for item in track_list[:MAX_IMPORT_TRACKS]:
         if not isinstance(item, dict):
             continue
         t_title = _clean_space(item.get("title") or item.get("name") or "")
-        t_artist = _clean_space(item.get("subtitle") or "")
+        artists_item = item.get("artists")
+        if isinstance(artists_item, list) and artists_item:
+            t_artist = ", ".join(
+                _clean_space(a.get("name", ""))
+                for a in artists_item
+                if isinstance(a, dict) and a.get("name")
+            )
+        else:
+            t_artist = ""
+        if not t_artist:
+            t_artist = _clean_space(item.get("subtitle") or "")
+        if not t_artist and expected_kind == "album":
+            t_artist = header_artist
         if not t_title:
             continue
         t_dur = round((item.get("duration") or 0) / 1000)
@@ -434,6 +476,27 @@ def _itunes_item_to_track(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _extract_apple_sections(sd: Any) -> List[Dict[str, Any]]:
+    """Extract section dicts from Apple Music serialized-server-data (supports both list and dict roots)."""
+    entries = sd if isinstance(sd, list) else sd.get("data") if isinstance(sd, dict) else []
+    if not isinstance(entries, list):
+        entries = []
+
+    sections: List[Dict[str, Any]] = []
+    if isinstance(sd, dict) and isinstance(sd.get("sections"), list):
+        sections.extend(s for s in sd["sections"] if isinstance(s, dict))
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        inner = entry.get("data")
+        if isinstance(inner, dict) and isinstance(inner.get("sections"), list):
+            sections.extend(s for s in inner["sections"] if isinstance(s, dict))
+        elif isinstance(entry.get("sections"), list):
+            sections.extend(s for s in entry["sections"] if isinstance(s, dict))
+    return sections
+
+
 def _extract_apple_serialized_tracks(html_text: str, target_track_id: Optional[str] = None) -> Tuple[str, List[Dict[str, Any]]]:
     doc = _parse_html(html_text)
     raw_sd = doc.scripts.get("serialized-server-data", "")
@@ -444,16 +507,13 @@ def _extract_apple_serialized_tracks(html_text: str, target_track_id: Optional[s
     if raw_sd:
         try:
             sd = json.loads(raw_sd)
-            page_data = (sd.get("data") or [{}])[0].get("data", {})
-            sections = page_data.get("sections") or []
+            sections = _extract_apple_sections(sd)
             for sec in sections:
-                if not isinstance(sec, dict):
-                    continue
                 kind = sec.get("itemKind", "")
                 sec_id = str(sec.get("id", ""))
                 items = sec.get("items") or []
 
-                if kind == "containerDetailHeaderLockup" and items and not title:
+                if kind in ("containerDetailHeaderLockup", "playlistHeaderLockup") and items and not title:
                     title = _clean_space(items[0].get("title") or "")
                     if isinstance(items[0].get("subtitleLinks"), list):
                         header_artist = ", ".join(
@@ -462,7 +522,7 @@ def _extract_apple_serialized_tracks(html_text: str, target_track_id: Optional[s
                             if isinstance(s, dict) and s.get("title")
                         )
 
-                if kind == "trackLockup" or "track-list" in sec_id:
+                if kind in ("trackLockup", "songLockup") or "track-list" in sec_id:
                     for item in items:
                         if not isinstance(item, dict):
                             continue
@@ -642,13 +702,20 @@ def _strip_soundtrack_suffix(title: str) -> str:
     return re.sub(r"\s{2,}", " ", cleaned).strip() or title.strip()
 
 
+def _contains_modifier(norm_text: str, modifier: str) -> bool:
+    return bool(re.search(rf"(?:^|\b){re.escape(modifier)}(?:\b|$)", norm_text))
+
+
 def _version_modifier_penalty(src_title: str, cand_title: str) -> float:
     src_norm = _normalize_text(src_title)
     cand_norm = _normalize_text(cand_title)
     penalty = 0.0
     for mod in UNWANTED_VERSION_MODIFIERS:
-        if mod in cand_norm and mod not in src_norm:
+        if _contains_modifier(cand_norm, mod) and not _contains_modifier(src_norm, mod):
             penalty += 0.45
+    for mod in SOFT_VERSION_MODIFIERS:
+        if _contains_modifier(cand_norm, mod) and not _contains_modifier(src_norm, mod):
+            penalty += 0.25
     return penalty
 
 

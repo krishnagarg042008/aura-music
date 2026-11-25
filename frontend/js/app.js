@@ -1,6 +1,6 @@
 import { VibeScene3D } from "./scene3d.js?v=18";
 import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js?v=17";
-import { buildShuffledQueue, detectExternalMusicUrl, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js?v=19";
+import { buildShuffledQueue, detectExternalMusicUrl, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js?v=20";
 
 const STORAGE_KEY = "aura_playlists_v1";
 const HISTORY_KEY = "aura_listen_history_v1";
@@ -2116,7 +2116,14 @@ async function runPlaylistImport() {
       return;
     }
 
+    if (!tracks.length) {
+      throw new Error("Could not find any matching playable tracks on YouTube.");
+    }
+
     const pl = createPlaylist(data.title || `${meta.label} Import`, tracks);
+    if (!pl) {
+      throw new Error("Could not save imported playlist.");
+    }
     importUrlInput.value = "";
     importBox.classList.add("hidden");
     importStatus.classList.add("hidden");

@@ -32,6 +32,14 @@ class TestExternalUrlParsing(unittest.TestCase):
         self.assertEqual(s["provider"], "spotify")
         self.assertEqual(s["kind"], "shortlink")
 
+        bare_sp = parse_external_url("open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b")
+        self.assertEqual(bare_sp["provider"], "spotify")
+        self.assertEqual(bare_sp["item_id"], "0VjIjW4GlUZAMYd2vXMi3b")
+
+        upper_uri = parse_external_url("Spotify:Album:4yP0hdKOZPNshxUOjY0cZj")
+        self.assertEqual(upper_uri["kind"], "album")
+        self.assertEqual(upper_uri["canonical_url"], "https://open.spotify.com/album/4yP0hdKOZPNshxUOjY0cZj")
+
     def test_parses_apple_music_track_album_and_playlist(self):
         song_in_album = parse_external_url("https://music.apple.com/in/album/after-hours/1499378108?i=1499378117")
         self.assertEqual(song_in_album["provider"], "apple")
@@ -46,6 +54,10 @@ class TestExternalUrlParsing(unittest.TestCase):
 
         album = parse_external_url("https://music.apple.com/us/album/after-hours/1499378108")
         self.assertEqual(album["kind"], "album")
+
+        bare_ap = parse_external_url("music.apple.com/us/song/kesariya/1620776479")
+        self.assertEqual(bare_ap["provider"], "apple")
+        self.assertEqual(bare_ap["kind"], "track")
 
         playlist = parse_external_url("https://music.apple.com/us/playlist/my-mix/pl.u-XkD0vLBSxYZ123")
         self.assertEqual(playlist["kind"], "playlist")
@@ -94,6 +106,19 @@ class TestProviderExtractionAndMatching(unittest.TestCase):
         self.assertEqual(len(parsed_p["source_tracks"]), 2)
         self.assertEqual(parsed_p["source_tracks"][1]["artist"], "The Weeknd, Daft Punk")
 
+        alb_ent = {
+            "type": "album",
+            "name": "After Hours",
+            "subtitle": "The Weeknd",
+            "trackList": [
+                {"title": "Alone Again", "duration": 250000},
+                {"title": "Snowchild", "artists": [{"name": "The Weeknd"}], "duration": 247000},
+            ],
+        }
+        parsed_alb = _parse_spotify_embed_entity(alb_ent, "album")
+        self.assertEqual(parsed_alb["source_tracks"][0]["artist"], "The Weeknd")
+        self.assertEqual(parsed_alb["source_tracks"][1]["artist"], "The Weeknd")
+
     def test_parses_apple_serialized_server_data_without_related_pollution(self):
         payload = {
             "data": [
@@ -133,6 +158,16 @@ class TestProviderExtractionAndMatching(unittest.TestCase):
         self.assertEqual(len(tracks), 2)
         self.assertEqual(tracks[0]["title"], "Blinding Lights")
 
+        # Apple Music serialized-server-data can also have a top-level list root
+        list_doc = (
+            '<html><head><title>Ignored Title</title></head><body>'
+            f'<script type="application/json" id="serialized-server-data">{json.dumps(payload["data"])}</script>'
+            "</body></html>"
+        )
+        list_title, list_tracks = _extract_apple_serialized_tracks(list_doc)
+        self.assertEqual(list_title, "Today’s Hits")
+        self.assertEqual(len(list_tracks), 2)
+
     def test_youtube_matcher_penalizes_slowed_and_karaoke_variants(self):
         fake_yt = MagicMock()
         fake_yt.search.return_value = [
@@ -167,6 +202,31 @@ class TestProviderExtractionAndMatching(unittest.TestCase):
         )
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0]["videoId"], "studio33333")
+
+        # Word-boundary modifier check: "Discover" should not falsely trigger "cover"
+        fake_yt.search.return_value = [
+            {
+                "videoId": "discover111",
+                "title": "Discover Me",
+                "artists": [{"name": "Artist"}],
+                "duration_seconds": 195,
+                "thumbnails": [],
+            },
+            {
+                "videoId": "discover222",
+                "title": "Discover Me (Lofi Remix)",
+                "artists": [{"name": "Artist"}],
+                "duration_seconds": 195,
+                "thumbnails": [],
+            },
+        ]
+        word_matches = match_track_on_youtube(
+            fake_yt,
+            _format_track,
+            {"title": "Discover Me", "artist": "Artist", "duration": 195},
+            max_results=1,
+        )
+        self.assertEqual(word_matches[0]["videoId"], "discover111")
 
 
 class TestImportExternalAsync(unittest.IsolatedAsyncioTestCase):

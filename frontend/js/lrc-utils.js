@@ -179,16 +179,22 @@ export function buildShuffledQueue(queue, currentIndex, rng = Math.random) {
   return { queue: rest, currentIndex: -1 };
 }
 
+const SCHEMELESS_EXTERNAL_RE = /^(?:(?:open|play)\.spotify\.com|spotify\.link|spotify\.app\.link|spoti\.fi|(?:geo\.)?(?:music|itunes)\.apple\.com|apple\.co)\//i;
+
 /**
  * Detect whether raw user input is a Spotify, Apple Music, or YouTube playlist link/URI.
  * Returns "spotify" | "apple" | "youtube" | null.
  */
 export function detectExternalMusicUrl(rawInput) {
-  const raw = String(rawInput || "").trim();
+  let raw = String(rawInput || "").trim();
   if (!raw) return null;
 
   if (/^spotify:(?:track|album|playlist):[A-Za-z0-9]{10,40}$/i.test(raw)) {
     return "spotify";
+  }
+
+  if (SCHEMELESS_EXTERNAL_RE.test(raw)) {
+    raw = `https://${raw}`;
   }
 
   try {
