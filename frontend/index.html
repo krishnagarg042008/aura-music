@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/styles.css?v=17" />
+  <link rel="stylesheet" href="/css/styles.css?v=18" />
 
   <script type="importmap">
     {
@@ -27,8 +27,11 @@
     }
   </script>
 </head>
-<body data-vibe="synth" data-has-track="false">
+<body data-vibe="synth" data-has-track="false" data-visual-intensity="balanced">
   <canvas id="bg-canvas"></canvas>
+  <div id="ambient-cover-layer" class="ambient-cover-layer" aria-hidden="true">
+    <img id="ambient-cover-img" alt="" referrerpolicy="no-referrer" />
+  </div>
   <div class="glass-vignette"></div>
 
   <div id="app" class="app-shell" data-mobile-view="player">
@@ -148,6 +151,8 @@
             <button data-vibe="melancholy">Rain</button>
             <button data-vibe="rock">Rock</button>
             <button data-vibe="romantic">Romance</button>
+            <button data-vibe="spiritual">Spiritual</button>
+            <button data-vibe="cosmic">Cosmic</button>
           </div>
         </div>
 
@@ -160,9 +165,9 @@
             <button id="offset-plus" class="sync-step-btn" data-delta="0.25" title="Shift lyrics later by 0.25s" aria-label="Increase offset by 0.25s">+0.25s</button>
             <button id="offset-plus-1" class="sync-step-btn" data-delta="1.0" title="Shift lyrics later by 1.0s" aria-label="Increase offset by 1.0s">+1.0s</button>
           </div>
-          <button id="audio-fx-btn" class="glass-pill action-pill" title="5-Band EQ, Normalization & Crossfade">
+          <button id="audio-fx-btn" class="glass-pill action-pill" title="EQ, Crossfade & Ambient Visuals">
             <svg viewBox="0 0 24 24" class="icon" style="width:14px;height:14px;margin-right:5px;"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
-            <span>EQ</span>
+            <span>FX &amp; Visuals</span>
           </button>
           <button id="header-queue-btn" class="glass-pill action-pill desktop-only" title="View Queue">
             <svg viewBox="0 0 24 24" class="icon" style="width:14px;height:14px;margin-right:6px;"><path fill="currentColor" d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
@@ -177,6 +182,7 @@
         <section class="now-playing-col" id="player-view-col">
           <div class="art-container" id="art-container">
             <div class="cover-ring"></div>
+            <canvas id="cover-halo-canvas" class="cover-halo-canvas" aria-hidden="true"></canvas>
             <img id="album-art" src="" alt="Album Art" referrerpolicy="no-referrer" class="album-art hidden" />
             <div id="art-placeholder" class="art-placeholder">
               <span>Search &amp; play any song</span>
@@ -353,8 +359,8 @@
     <div class="modal-card glass-panel eq-modal-card">
       <div class="modal-header">
         <div>
-          <h3 id="audio-fx-title">Spatial Audio &amp; EQ</h3>
-          <p class="modal-sub">5-Band Equalizer, Loudness &amp; Crossfade</p>
+          <h3 id="audio-fx-title">Spatial Audio &amp; Visuals</h3>
+          <p class="modal-sub">5-Band Equalizer, Crossfade &amp; Ambient Engine</p>
         </div>
         <button id="audio-fx-close-btn" class="icon-btn" aria-label="Close Audio FX">&times;</button>
       </div>
@@ -410,6 +416,30 @@
             <button data-cf="4" class="cf-btn">4s</button>
           </div>
         </div>
+      </div>
+
+      <div class="fx-toggles">
+        <div class="fx-section-title">Ambient Vibes &amp; Visuals</div>
+        <div class="fx-toggle-row">
+          <span>Visual Intensity</span>
+          <div class="crossfade-pills" id="vis-intensity-pills">
+            <button data-intensity="minimal" class="vis-int-btn">Minimal</button>
+            <button data-intensity="balanced" class="vis-int-btn active">Balanced</button>
+            <button data-intensity="vivid" class="vis-int-btn">Vivid</button>
+          </div>
+        </div>
+        <label class="fx-toggle-row">
+          <span>Blurred Album Canvas</span>
+          <input id="vis-backdrop-toggle" type="checkbox" checked />
+        </label>
+        <label class="fx-toggle-row">
+          <span>Mood Particles</span>
+          <input id="vis-particles-toggle" type="checkbox" checked />
+        </label>
+        <label class="fx-toggle-row">
+          <span>Cover Spectrum Halo</span>
+          <input id="vis-halo-toggle" type="checkbox" checked />
+        </label>
       </div>
     </div>
   </div>
@@ -512,6 +542,6 @@
   <div id="yt-player-box" style="position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-999;"></div>
 
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script type="module" src="/js/app.js?v=17"></script>
+  <script type="module" src="/js/app.js?v=18"></script>
 </body>
 </html>

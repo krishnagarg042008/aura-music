@@ -41,6 +41,7 @@ def is_allowed_thumbnail_url(url: str) -> bool:
 
     return any(host == d or host.endswith(f".{d}") for d in ALLOWED_THUMB_DOMAINS)
 
+
 VIBE_PROFILES: Dict[str, Dict] = {
     "chill": {
         "id": "chill",
@@ -96,13 +97,44 @@ VIBE_PROFILES: Dict[str, Dict] = {
         "turbulence": 0.75,
         "default_colors": ["#3b0a2a", "#f43f5e", "#fda4af"],
     },
+    "spiritual": {
+        "id": "spiritual",
+        "label": "Sacred Aura",
+        "geometry": "sacred_lotus",
+        "particle_mode": "diya",
+        "speed": 0.40,
+        "turbulence": 0.55,
+        "default_colors": ["#1c0d04", "#f59e0b", "#fde68a"],
+    },
+    "cosmic": {
+        "id": "cosmic",
+        "label": "Cosmic Drift",
+        "geometry": "astral_field",
+        "particle_mode": "astral",
+        "speed": 0.68,
+        "turbulence": 0.85,
+        "default_colors": ["#09051a", "#8b5cf6", "#38bdf8"],
+    },
 }
 
 VIBE_KEYWORDS: Dict[str, List[str]] = {
+    "spiritual": [
+        "bhajan", "aarti", "chalisa", "mantra", "kirtan", "shabad", "gurbani",
+        "waheguru", "satnam", "sufi", "qawwali", "kun faya", "maula", "khwaja",
+        "ardas", "hanuman", "shiv", "shiva", "shambhu", "mahadev", "bholenath",
+        "krishna", "radhe", "govind", "hare", "gayatri", "devotional", "sacred",
+        "divine", "prayer", "worship", "hymn", "stotra", "tandav", "ram siya",
+        "नमो", "राम", "शिव", "कृष्ण", "राधे", "हनुमान", "वाहेगुरु", "मौला",
+        "नूर", "दुआ", "भजन", "आरती", "चालीसा", "सतनाम", "शंभू",
+        "ਵਾਹਿਗੁਰੂ", "ਸਤਿਨਾਮ", "ਅਰਦਾਸ", "ਸ਼ਬਦ", "ਗੁਰਬਾਣੀ",
+    ],
     "hype": [
         "rap", "hip hop", "trap", "phonk", "party", "club", "drill", "bass",
         "money", "millionaire", "gang", "lit", "rage", "remix", "honey singh",
         "travis scott", "kendrick", "drake", "eminem", "badshah", "kanye", "playboi",
+        "bhangra", "jatt", "patiala", "peg", "gabru", "pendu", "dhol", "tauba",
+        "295", "moose wala", "diljit", "karan aujla", "ap dhillon", "shubh",
+        "ਜੱਟ", "ਪਟਿਆਲਾ",
     ],
     "synth": [
         "synth", "cyber", "neon", "electronic", "edm", "house", "techno", "dance",
@@ -113,21 +145,31 @@ VIBE_KEYWORDS: Dict[str, List[str]] = {
         "sad", "cry", "tears", "lonely", "alone", "broken", "rain", "goodbye",
         "hurt", "empty", "miss you", "memories", "fade", "dark", "sorrow", "pain",
         "blue", "melancholy", "slowed", "reverb", "billie", "radiohead", "adele",
+        "bewafa", "judai", "tanhai", "dard", "aansu", "gham", "khamoshi", "udaas",
+        "दर्द", "बेवफ़ा", "जुदाई", "आँसू", "तन्हाई", "उदास",
     ],
     "rock": [
         "rock", "metal", "punk", "guitar", "scream", "fire", "burn", "rebel",
         "thunder", "riot", "linkin park", "metallica", "nirvana", "queen",
-        "arctic monkeys", "grunge", "heavy", "distortion", "rage", "war",
+        "arctic monkeys", "grunge", "heavy", "distortion", "war",
     ],
     "romantic": [
         "love", "heart", "dil", "pyaar", "ishq", "mehboob", "kiss", "forever",
         "darling", "baby", "sweet", "romance", "arijit", "kishore", "lata",
         "chura liya", "mohabbat", "soul", "valentine", "hold me", "angel",
+        "sanam", "piya", "channa", "raataan", "kesariya", "humsafar", "sajna",
+        "sohniye", "heeriye", "tere bina", "प्यार", "इश्क़", "मोहब्बत",
+        "दिल", "सजना", "पिया", "हमसफ़र", "ਇਸ਼ਕ", "ਪਿਆਰ",
     ],
     "chill": [
         "lofi", "lo-fi", "chill", "acoustic", "ambient", "study", "sleep",
         "coffee", "breeze", "sunset", "ocean", "waves", "calm", "peace",
         "frank ocean", "sza", "jazz", "piano", "instrumental", "dream",
+    ],
+    "cosmic": [
+        "cosmic", "galaxy", "universe", "interstellar", "nebula", "astral",
+        "stardust", "cosmos", "orbital", "eclipse", "supernova", "moonlight",
+        "stargazing", "space", "celestial", "constellation", "chaand", "चाँद", "ਤਾਰੇ",
     ],
 }
 
@@ -196,8 +238,9 @@ async def extract_palette(client: httpx.AsyncClient, image_url: str) -> List[str
 
 
 def classify_vibe(title: str, artist: str, lyrics_text: str = "") -> Dict:
+    # Preserve both ASCII words and Unicode Devanagari/Gurmukhi words
     corpus = f"{title} {artist} {lyrics_text[:1500]}".lower()
-    corpus = re.sub(r"[^a-z0-9\s\-]", " ", corpus)
+    corpus = re.sub(r"[^\w\s\-\u0900-\u097F\u0A00-\u0A7F]", " ", corpus)
 
     scores: Dict[str, float] = {k: 0.0 for k in VIBE_PROFILES}
     meta_text = f"{title} {artist}".lower()
@@ -206,13 +249,14 @@ def classify_vibe(title: str, artist: str, lyrics_text: str = "") -> Dict:
         for kw in keywords:
             if kw in meta_text:
                 scores[vibe] += 3.5
-            matches = len(re.findall(rf"\b{re.escape(kw)}\b", corpus))
+            # Unicode Indic scripts don't always honor ASCII \b cleanly with combining matras;
+            # use whitespace/punctuation lookarounds for reliable matching.
+            matches = len(re.findall(rf"(?:^|\s){re.escape(kw)}(?=$|\s)", corpus))
             scores[vibe] += matches * 1.0
 
     best_vibe = max(scores, key=scores.get)
     if scores[best_vibe] < 1.5:
-        # Deterministic fallback based on title hash so vibes stay varied
-        fallback_order = ["synth", "chill", "romantic", "hype", "melancholy"]
+        fallback_order = ["synth", "chill", "romantic", "hype", "melancholy", "cosmic"]
         best_vibe = fallback_order[sum(ord(c) for c in title) % len(fallback_order)]
 
     return VIBE_PROFILES[best_vibe].copy()

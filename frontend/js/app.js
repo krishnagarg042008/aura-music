@@ -1,4 +1,4 @@
-import { VibeScene3D } from "./scene3d.js?v=16";
+import { VibeScene3D } from "./scene3d.js?v=18";
 import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js?v=17";
 import { buildShuffledQueue, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js";
 
@@ -10,12 +10,14 @@ const PREFS_KEY = "aura_prefs_v1";
 const SCRIPT_MODE_KEY = "aura_lyrics_script_mode_v1";
 
 const VIBE_PRESETS = {
-  chill: { id: "chill", label: "Liquid Chill", geometry: "aurora_orb", particle_mode: "float", speed: 0.45, turbulence: 0.65, default_colors: ["#1e3a5f", "#4fd1c5", "#81e6d9"] },
-  hype: { id: "hype", label: "Kinetic Hype", geometry: "bass_polyhedron", particle_mode: "burst", speed: 1.45, turbulence: 1.85, default_colors: ["#3b0764", "#f97316", "#facc15"] },
-  synth: { id: "synth", label: "Neon Synth", geometry: "cyber_terrain", particle_mode: "warp", speed: 1.15, turbulence: 1.1, default_colors: ["#0f0728", "#ec4899", "#06b6d4"] },
-  melancholy: { id: "melancholy", label: "Velvet Rain", geometry: "mist_prism", particle_mode: "rain", speed: 0.35, turbulence: 0.45, default_colors: ["#0f172a", "#38bdf8", "#94a3b8"] },
-  rock: { id: "rock", label: "Molten Core", geometry: "plasma_spike", particle_mode: "embers", speed: 1.35, turbulence: 2.1, default_colors: ["#2a0606", "#ef4444", "#fb923c"] },
-  romantic: { id: "romantic", label: "Golden Bloom", geometry: "velvet_torus", particle_mode: "stardust", speed: 0.55, turbulence: 0.75, default_colors: ["#3b0a2a", "#f43f5e", "#fda4af"] },
+  chill: { id: "chill", label: "Liquid Chill", particle_mode: "float", speed: 0.45, turbulence: 0.65, default_colors: ["#1e3a5f", "#4fd1c5", "#81e6d9"] },
+  hype: { id: "hype", label: "Kinetic Hype", particle_mode: "burst", speed: 1.45, turbulence: 1.85, default_colors: ["#3b0764", "#f97316", "#facc15"] },
+  synth: { id: "synth", label: "Neon Synth", particle_mode: "warp", speed: 1.15, turbulence: 1.1, default_colors: ["#0f0728", "#ec4899", "#06b6d4"] },
+  melancholy: { id: "melancholy", label: "Velvet Rain", particle_mode: "rain", speed: 0.35, turbulence: 0.45, default_colors: ["#0f172a", "#38bdf8", "#94a3b8"] },
+  rock: { id: "rock", label: "Molten Core", particle_mode: "embers", speed: 1.35, turbulence: 2.1, default_colors: ["#2a0606", "#ef4444", "#fb923c"] },
+  romantic: { id: "romantic", label: "Golden Bloom", particle_mode: "stardust", speed: 0.55, turbulence: 0.75, default_colors: ["#3b0a2a", "#f43f5e", "#fda4af"] },
+  spiritual: { id: "spiritual", label: "Sacred Aura", particle_mode: "diya", speed: 0.40, turbulence: 0.55, default_colors: ["#1c0d04", "#f59e0b", "#fde68a"] },
+  cosmic: { id: "cosmic", label: "Cosmic Drift", particle_mode: "astral", speed: 0.68, turbulence: 0.85, default_colors: ["#09051a", "#8b5cf6", "#38bdf8"] },
 };
 
 const EQ_FREQUENCIES = [60, 230, 910, 3600, 14000];
@@ -121,6 +123,15 @@ const eqBandSliders = Array.from(document.querySelectorAll("#eq-bands input[type
 const eqNormalizeToggle = document.getElementById("eq-normalize-toggle");
 const crossfadePills = document.getElementById("crossfade-pills");
 
+const ambientCoverLayer = document.getElementById("ambient-cover-layer");
+const ambientCoverImg = document.getElementById("ambient-cover-img");
+const coverHaloCanvas = document.getElementById("cover-halo-canvas");
+const coverHaloCtx = coverHaloCanvas ? coverHaloCanvas.getContext("2d") : null;
+const visIntensityPills = document.getElementById("vis-intensity-pills");
+const visBackdropToggle = document.getElementById("vis-backdrop-toggle");
+const visParticlesToggle = document.getElementById("vis-particles-toggle");
+const visHaloToggle = document.getElementById("vis-halo-toggle");
+
 const scriptToggleBtn = document.getElementById("script-toggle-btn");
 const pasteLrcBtn = document.getElementById("paste-lrc-btn");
 const lyricCardBtn = document.getElementById("lyric-card-btn");
@@ -210,6 +221,10 @@ function loadPrefs() {
     shuffle: false,
     repeatMode: "off",
     autoRadio: true,
+    visualIntensity: "balanced",
+    albumBackdrop: true,
+    particlesEnabled: true,
+    spectrumHalo: true,
   };
   try {
     const parsed = JSON.parse(localStorage.getItem(PREFS_KEY) || "null");
@@ -842,6 +857,16 @@ function updateTrackDisplay(track) {
   albumArt.classList.remove("hidden");
   artPlaceholder.classList.add("hidden");
   document.body.setAttribute("data-has-track", "true");
+  if (ambientCoverImg) {
+    ambientCoverImg.classList.remove("loaded");
+    const fallback = `https://i.ytimg.com/vi/${track.videoId}/hqdefault.jpg`;
+    ambientCoverImg.onload = () => ambientCoverImg.classList.add("loaded");
+    ambientCoverImg.onerror = () => {
+      if (ambientCoverImg.src !== fallback) ambientCoverImg.src = fallback;
+    };
+    ambientCoverImg.src = track.thumbnail || fallback;
+    ambientCoverLayer?.classList.toggle("visible", Boolean(prefs.albumBackdrop));
+  }
   if (miniTitle) miniTitle.textContent = track.title;
   if (miniArtist) miniArtist.textContent = track.artist;
   if (miniAlbumArt) {
@@ -1251,7 +1276,33 @@ function syncAudioFxUI() {
   crossfadePills?.querySelectorAll(".cf-btn").forEach((btn) => {
     btn.classList.toggle("active", Number(btn.dataset.cf) === Number(prefs.crossfadeSec || 0));
   });
+  visIntensityPills?.querySelectorAll(".vis-int-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.intensity === (prefs.visualIntensity || "balanced"));
+  });
+  if (visBackdropToggle) visBackdropToggle.checked = prefs.albumBackdrop !== false;
+  if (visParticlesToggle) visParticlesToggle.checked = prefs.particlesEnabled !== false;
+  if (visHaloToggle) visHaloToggle.checked = prefs.spectrumHalo !== false;
   fxYtNotice?.classList.toggle("hidden", !isUsingYTPlayer);
+}
+
+function applyVisualPreferences() {
+  const intensity = ["minimal", "balanced", "vivid"].includes(prefs.visualIntensity)
+    ? prefs.visualIntensity
+    : "balanced";
+  const particlesEnabled = prefs.particlesEnabled !== false;
+  const albumBackdrop = prefs.albumBackdrop !== false;
+  const spectrumHalo = prefs.spectrumHalo !== false;
+
+  document.body.setAttribute("data-visual-intensity", intensity);
+  scene3D.setVisualOptions({ intensity, particlesEnabled });
+
+  if (ambientCoverLayer) {
+    ambientCoverLayer.classList.toggle("hidden", !albumBackdrop);
+    ambientCoverLayer.classList.toggle("visible", albumBackdrop && Boolean(currentTrack));
+  }
+  if (coverHaloCanvas) {
+    coverHaloCanvas.classList.toggle("hidden", !spectrumHalo);
+  }
 }
 
 function initWebAudio() {
@@ -1363,6 +1414,33 @@ crossfadePills?.addEventListener("click", (e) => {
   prefs.crossfadeSec = parseInt(btn.dataset.cf, 10) || 0;
   savePrefs();
   syncAudioFxUI();
+});
+
+visIntensityPills?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".vis-int-btn");
+  if (!btn) return;
+  prefs.visualIntensity = btn.dataset.intensity || "balanced";
+  savePrefs();
+  applyVisualPreferences();
+  syncAudioFxUI();
+});
+
+visBackdropToggle?.addEventListener("change", () => {
+  prefs.albumBackdrop = Boolean(visBackdropToggle.checked);
+  savePrefs();
+  applyVisualPreferences();
+});
+
+visParticlesToggle?.addEventListener("change", () => {
+  prefs.particlesEnabled = Boolean(visParticlesToggle.checked);
+  savePrefs();
+  applyVisualPreferences();
+});
+
+visHaloToggle?.addEventListener("change", () => {
+  prefs.spectrumHalo = Boolean(visHaloToggle.checked);
+  savePrefs();
+  applyVisualPreferences();
 });
 
 // ================= MEDIA SESSION API =================
@@ -2566,6 +2644,7 @@ function mainLoop(now) {
       bar.style.height = `${Math.round(level * 100)}%`;
     });
 
+    drawCoverSpectrumHalo(now, bNorm, mNorm, hNorm, true);
     updateMediaSessionPosition(false);
   } else {
     smoothBass *= 0.85;
@@ -2574,6 +2653,7 @@ function mainLoop(now) {
     artContainer.style.setProperty("--bass", smoothBass.toFixed(3));
     artContainer.style.setProperty("--mid", smoothMid.toFixed(3));
     eqBars.forEach((bar) => { bar.style.height = "22%"; });
+    drawCoverSpectrumHalo(now, 0.03, 0.02, 0.02, false);
   }
 
   if (effectiveDuration > 0) {
@@ -2594,6 +2674,101 @@ function mainLoop(now) {
   if (Number.isFinite(curTime) && (curTime > 0 || isPlaying)) {
     lyricsEngine.update(curTime);
   }
+}
+
+let activeHaloAccent1 = "#ec4899";
+let activeHaloAccent2 = "#06b6d4";
+
+function drawCoverSpectrumHalo(now, bass, mid, high, isPlaying) {
+  if (!coverHaloCanvas || !coverHaloCtx || prefs.spectrumHalo === false || document.hidden) return;
+
+  const rect = coverHaloCanvas.getBoundingClientRect();
+  if (rect.width < 10 || rect.height < 10) return;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const targetW = Math.round(rect.width * dpr);
+  const targetH = Math.round(rect.height * dpr);
+  if (coverHaloCanvas.width !== targetW || coverHaloCanvas.height !== targetH) {
+    coverHaloCanvas.width = targetW;
+    coverHaloCanvas.height = targetH;
+  }
+
+  const ctx = coverHaloCtx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, rect.width, rect.height);
+
+  const inten = prefs.visualIntensity === "minimal" ? 0.38 : prefs.visualIntensity === "vivid" ? 1.45 : 1.0;
+  if (!isPlaying && smoothBass < 0.01) return;
+
+  const styles = getComputedStyle(document.documentElement);
+  activeHaloAccent1 = styles.getPropertyValue("--accent-1").trim() || activeHaloAccent1;
+  activeHaloAccent2 = styles.getPropertyValue("--accent-2").trim() || activeHaloAccent2;
+
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
+  const baseHalf = Math.min(cx, cy) - 34;
+  if (baseHalf <= 16) return;
+
+  const bars = 68;
+  const phaseShift = now * 0.0008;
+  const grad = ctx.createLinearGradient(0, 0, rect.width, rect.height);
+  grad.addColorStop(0, activeHaloAccent1);
+  grad.addColorStop(1, activeHaloAccent2);
+
+  const squircle = (theta, radius) => {
+    const c = Math.cos(theta);
+    const s = Math.sin(theta);
+    return {
+      x: cx + Math.sign(c) * Math.pow(Math.abs(c), 0.28) * radius,
+      y: cy + Math.sign(s) * Math.pow(Math.abs(s), 0.28) * radius,
+    };
+  };
+
+  // Subtle squircle orbital perimeter hugging the rounded album art
+  ctx.save();
+  ctx.strokeStyle = grad;
+  ctx.globalAlpha = Math.min(0.6, (0.14 + smoothBass * 0.34) * inten);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i <= 72; i++) {
+    const pt = squircle((i / 72) * Math.PI * 2, baseHalf);
+    if (i === 0) ctx.moveTo(pt.x, pt.y);
+    else ctx.lineTo(pt.x, pt.y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+
+  // Radial spectrum rays extending smoothly from the squircle perimeter
+  ctx.lineCap = "round";
+  ctx.lineWidth = 2.4;
+  ctx.globalAlpha = Math.min(0.85, (isPlaying ? 0.58 : 0.18) * inten);
+
+  const hasLiveFFT = !isUsingYTPlayer && analyser && freqData && freqData.length >= 64 && bass + mid + high >= 0.01;
+  for (let i = 0; i < bars; i++) {
+    const theta = (i / bars) * Math.PI * 2;
+    let amp;
+    if (hasLiveFFT) {
+      const binIdx = 2 + Math.floor((i % (bars / 2)) * 2.1);
+      amp = (freqData[binIdx] || 0) / 255;
+    } else {
+      const t = now * 0.003;
+      const wave1 = Math.abs(Math.sin(i * 0.35 + t * 1.4 + phaseShift));
+      const wave2 = Math.abs(Math.cos(i * 0.65 - t * 1.9));
+      amp = (wave1 * 0.55 + wave2 * 0.45) * (0.3 + smoothBass * 0.75 + smoothMid * 0.35);
+    }
+
+    const barLen = Math.min(24, (3 + amp * 16) * inten);
+    const ptIn = squircle(theta, baseHalf + 1);
+    const nx = ptIn.x - cx;
+    const ny = ptIn.y - cy;
+    const nLen = Math.hypot(nx, ny) || 1;
+
+    ctx.beginPath();
+    ctx.moveTo(ptIn.x, ptIn.y);
+    ctx.lineTo(ptIn.x + (nx / nLen) * barLen, ptIn.y + (ny / nLen) * barLen);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // ================= MOBILE NAVIGATION & MUTE =================
@@ -2657,6 +2832,7 @@ if ("serviceWorker" in navigator) {
 initMediaSession();
 updateTransportModeUI();
 syncAudioFxUI();
+applyVisualPreferences();
 loadQueueState();
 renderQueue();
 updateQueueBadges();

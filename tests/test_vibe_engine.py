@@ -27,6 +27,17 @@ class TestVibeEngine(unittest.TestCase):
         self.assertEqual(classify_vibe("Lofi Chill Beats", "Study")["id"], "chill")
         self.assertEqual(classify_vibe("Love Story", "Romantic")["id"], "romantic")
 
+    def test_classify_vibe_spiritual_cosmic_and_hindi_punjabi(self):
+        self.assertEqual(classify_vibe("Shree Hanuman Chalisa", "Hariharan")["id"], "spiritual")
+        self.assertEqual(
+            classify_vibe("Kun Faya Kun", "A.R. Rahman", "मौला मोरे घर आ जा नूर ही नूर")["id"],
+            "spiritual",
+        )
+        self.assertEqual(classify_vibe("Track 1", "Singer", "ਵਾਹਿਗੁਰੂ ਸਤਿਨਾਮ ਅਰਦਾਸ")["id"], "spiritual")
+        self.assertEqual(classify_vibe("Interstellar Cosmic Nebula", "Space")["id"], "cosmic")
+        self.assertEqual(classify_vibe("Brown Munde", "AP Dhillon")["id"], "hype")
+        self.assertEqual(classify_vibe("Kesariya", "Arijit Singh", "केसरिया तेरा इश्क़ है पिया")["id"], "romantic")
+
 
 class TestExtractPalette(unittest.IsolatedAsyncioTestCase):
     async def test_extract_palette_rejects_disallowed_url_without_http(self):

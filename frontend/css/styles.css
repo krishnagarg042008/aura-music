@@ -71,6 +71,23 @@ body[data-vibe="romantic"] {
   --lyric-glow: 0 0 34px rgba(244, 63, 94, 0.65);
 }
 
+body[data-vibe="spiritual"] {
+  --lyric-font: "Cormorant Garamond", Georgia, serif;
+  --lyric-weight: 600;
+  --lyric-style: normal;
+  --lyric-size: clamp(2.1rem, 3.2vw, 3.05rem);
+  --lyric-tracking: 0.02em;
+  --lyric-glow: 0 0 32px rgba(245, 158, 11, 0.72), 0 0 58px rgba(253, 230, 138, 0.4);
+}
+
+body[data-vibe="cosmic"] {
+  --lyric-font: "Space Grotesk", sans-serif;
+  --lyric-weight: 700;
+  --lyric-size: clamp(1.8rem, 2.85vw, 2.7rem);
+  --lyric-tracking: 0.01em;
+  --lyric-glow: 0 0 30px rgba(139, 92, 246, 0.78), 0 0 54px rgba(56, 189, 248, 0.5);
+}
+
 /* ================= BASE LAYOUT (FIXED SCROLL BOUNDS) ================= */
 * {
   box-sizing: border-box;
@@ -99,6 +116,47 @@ html, body {
   height: 100dvh;
   z-index: 0;
   display: block;
+}
+
+.ambient-cover-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0;
+  mix-blend-mode: screen;
+  transition: opacity 0.85s ease;
+}
+
+body[data-has-track="true"] .ambient-cover-layer.visible {
+  opacity: 0.34;
+}
+
+body[data-visual-intensity="minimal"][data-has-track="true"] .ambient-cover-layer.visible {
+  opacity: 0.14;
+}
+
+body[data-visual-intensity="vivid"][data-has-track="true"] .ambient-cover-layer.visible {
+  opacity: 0.48;
+}
+
+.ambient-cover-layer.hidden {
+  display: none !important;
+}
+
+.ambient-cover-layer img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(82px) saturate(1.55) brightness(0.68);
+  transform: scale(1.24);
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.ambient-cover-layer img.loaded {
+  opacity: 1;
 }
 
 .glass-vignette {
@@ -514,11 +572,20 @@ html, body {
   align-items: center;
   gap: 10px;
   padding: 6px 8px 6px 14px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.vibe-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .vibe-dot {
   width: 9px;
   height: 9px;
+  flex-shrink: 0;
   border-radius: 50%;
   background: var(--accent-1);
   box-shadow: 0 0 12px var(--accent-1);
@@ -528,11 +595,14 @@ html, body {
   font-size: 0.8rem;
   font-weight: 600;
   margin-right: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .vibe-pills {
   display: flex;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .vibe-pills button {
@@ -545,6 +615,7 @@ html, body {
   border-radius: 99px;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .vibe-pills button:hover {
@@ -707,6 +778,21 @@ html, body {
   opacity: 0.92;
 }
 
+.cover-halo-canvas {
+  position: absolute;
+  inset: -44px;
+  width: calc(100% + 88px);
+  height: calc(100% + 88px);
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.88;
+  transition: opacity 0.4s ease;
+}
+
+.cover-halo-canvas.hidden {
+  display: none !important;
+}
+
 .album-art {
   position: relative;
   z-index: 2;
@@ -863,6 +949,40 @@ body[data-vibe="romantic"] .art-container.playing .cover-ring {
   border-radius: 40px;
   background: radial-gradient(circle, var(--accent-2), var(--accent-1) 55%, transparent 78%);
   filter: blur(28px);
+}
+
+/* 7. SPIRITUAL */
+body[data-vibe="spiritual"] .art-container { --bass-strength: 0.05; }
+body[data-vibe="spiritual"] .art-container.playing {
+  animation: cover-chill-float 6.5s ease-in-out infinite;
+}
+body[data-vibe="spiritual"] .art-container.playing .cover-ring {
+  inset: -22px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(253, 230, 138, 0.85), rgba(245, 158, 11, 0.65) 52%, transparent 78%);
+  filter: blur(26px);
+  animation: cover-breathe 4.8s ease-in-out infinite;
+}
+body[data-vibe="spiritual"] .art-container.playing::after {
+  opacity: 0.36;
+  background: radial-gradient(circle at 50% 20%, rgba(253, 230, 138, 0.38), transparent 62%);
+}
+
+/* 8. COSMIC */
+body[data-vibe="cosmic"] .art-container { --bass-strength: 0.09; }
+body[data-vibe="cosmic"] .art-container.playing {
+  animation: cover-synth-hover 5.2s ease-in-out infinite;
+}
+body[data-vibe="cosmic"] .art-container.playing .cover-ring {
+  inset: -14px;
+  border-radius: 36px;
+  background: conic-gradient(from 45deg, #8b5cf6, #38bdf8, #c084fc, #8b5cf6);
+  filter: blur(20px);
+  animation: cover-neon-spin 8s linear infinite;
+}
+body[data-vibe="cosmic"] .art-container.playing::after {
+  opacity: 0.38;
+  background: linear-gradient(125deg, rgba(139, 92, 246, 0.25) 0%, transparent 50%, rgba(56, 189, 248, 0.25) 100%);
 }
 
 @keyframes cover-chill-float {
@@ -3051,7 +3171,8 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 }
 
 .eq-preset-btn,
-.cf-btn {
+.cf-btn,
+.vis-int-btn {
   padding: 6px 11px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -3064,10 +3185,19 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 }
 
 .eq-preset-btn.active,
-.cf-btn.active {
+.cf-btn.active,
+.vis-int-btn.active {
   background: #ffffff;
   color: #0a0b14;
   border-color: #ffffff;
+}
+
+.fx-section-title {
+  font-size: 0.70rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
 }
 
 .eq-bands {
