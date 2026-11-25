@@ -156,59 +156,6 @@ const PARTICLE_FRAG = `
   }
 `;
 
-const VIBE_MESH_VERT = `
-  uniform float uTime;
-  uniform float uBass;
-  uniform float uMid;
-  uniform float uTurbulence;
-  uniform float uStyle;
-  varying vec3 vNormal;
-  varying float vEnergy;
-
-  void main() {
-    vec3 pos = position;
-    float disp = 0.0;
-
-    if (uStyle > 1.5 && uStyle < 2.5) {
-      // Cyber terrain wave grid
-      float wave = sin(pos.x * 1.15 + uTime * 2.2) * cos(pos.y * 1.15 - uTime * 1.8);
-      float ridge = abs(sin(pos.x * 0.65)) * 0.55;
-      disp = (wave * (0.28 + uBass * 0.95) + ridge * (0.4 + uMid * 0.6)) * uTurbulence;
-      pos.z += disp;
-    } else if (uStyle > 3.5 && uStyle < 4.5) {
-      // Plasma spikes (rock)
-      float spike = sin(pos.x * 4.5 + uTime * 3.5) * cos(pos.y * 4.5 - uTime * 2.9) * sin(pos.z * 4.5 + uTime * 2.2);
-      disp = spike * (0.14 + uBass * 0.55) * uTurbulence;
-      pos += normal * disp;
-    } else {
-      // Organic breathing displacement
-      float wave = sin(pos.x * 2.4 + uTime * 1.5) * cos(pos.y * 2.4 - uTime * 1.2) * sin(pos.z * 2.4 + uTime);
-      disp = wave * (0.08 + uBass * 0.34) * uTurbulence;
-      pos += normal * disp;
-    }
-
-    vNormal = normalize(normalMatrix * normal);
-    vEnergy = clamp(abs(disp) * 2.0 + uBass * 0.8, 0.0, 1.0);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-  }
-`;
-
-const VIBE_MESH_FRAG = `
-  precision mediump float;
-  uniform vec3 uColorA;
-  uniform vec3 uColorB;
-  uniform float uOpacity;
-  varying vec3 vNormal;
-  varying float vEnergy;
-
-  void main() {
-    float fresnel = pow(1.0 - abs(vNormal.z), 1.8);
-    vec3 col = mix(uColorA, uColorB, clamp(fresnel * 0.75 + vEnergy * 0.5, 0.0, 1.0));
-    float alpha = uOpacity * (0.45 + fresnel * 0.65 + vEnergy * 0.35);
-    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.62));
-  }
-`;
-
 const PARTICLE_MODE_INDEX = {
   float: 0.0,
   burst: 1.0,
@@ -253,7 +200,6 @@ export class VibeScene3D {
 
     this.vibe = {
       id: "synth",
-      geometry: "cyber_terrain",
       particle_mode: "warp",
       speed: 1.15,
       turbulence: 1.1,
@@ -262,7 +208,6 @@ export class VibeScene3D {
     this.audio = { bass: 0, mid: 0, high: 0 };
 
     this._initBackdrop();
-    this._initVibeGeometries();
     this._initParticles();
     this._bindEvents();
     this.setVibe(this.vibe);
@@ -299,132 +244,6 @@ export class VibeScene3D {
     this.backdropQuad.renderOrder = -10;
     this.backdropQuad.frustumCulled = false;
     this.scene.add(this.backdropQuad);
-  }
-
-  _makeVibeShaderMaterial(style, opacity, wireframe = true) {
-    return new THREE.ShaderMaterial({
-      vertexShader: VIBE_MESH_VERT,
-      fragmentShader: VIBE_MESH_FRAG,
-      uniforms: {
-        uTime: this.meshUniforms.uTime,
-        uBass: this.meshUniforms.uBass,
-        uMid: this.meshUniforms.uMid,
-        uTurbulence: this.meshUniforms.uTurbulence,
-        uColorA: this.bgUniforms.uColorA,
-        uColorB: this.bgUniforms.uColorB,
-        uStyle: { value: style },
-        uOpacity: { value: opacity },
-      },
-      wireframe,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-  }
-
-  _initVibeGeometries() {
-    this.meshUniforms = {
-      uTime: { value: 0 },
-      uBass: { value: 0 },
-      uMid: { value: 0 },
-      uTurbulence: { value: 1.1 },
-    };
-
-    this.vibeGroup = new THREE.Group();
-    this.vibeGroup.position.set(0, 0, -2.5);
-    this.scene.add(this.vibeGroup);
-
-    this.vibeMeshes = {};
-
-    // 1. aurora_orb (Chill)
-    const orbGroup = new THREE.Group();
-    orbGroup.add(
-      new THREE.Mesh(
-        new THREE.IcosahedronGeometry(1.65, 3),
-        this._makeVibeShaderMaterial(0.0, 0.22, true)
-      )
-    );
-    orbGroup.add(
-      new THREE.Mesh(
-        new THREE.TorusGeometry(2.15, 0.025, 12, 64),
-        this._makeVibeShaderMaterial(0.0, 0.26, false)
-      )
-    );
-    this.vibeMeshes.aurora_orb = orbGroup;
-
-    // 2. bass_polyhedron (Hype)
-    const polyGroup = new THREE.Group();
-    polyGroup.add(
-      new THREE.Mesh(
-        new THREE.IcosahedronGeometry(1.5, 1),
-        this._makeVibeShaderMaterial(1.0, 0.28, true)
-      )
-    );
-    polyGroup.add(
-      new THREE.Mesh(
-        new THREE.IcosahedronGeometry(2.05, 0),
-        this._makeVibeShaderMaterial(1.0, 0.16, true)
-      )
-    );
-    this.vibeMeshes.bass_polyhedron = polyGroup;
-
-    // 3. cyber_terrain (Synth)
-    const terrainGroup = new THREE.Group();
-    const terrain = new THREE.Mesh(
-      new THREE.PlaneGeometry(16, 16, 34, 34),
-      this._makeVibeShaderMaterial(2.0, 0.26, true)
-    );
-    terrain.rotation.x = -Math.PI * 0.42;
-    terrain.position.set(0, -2.1, -1.6);
-    terrainGroup.add(terrain);
-    const synthRing = new THREE.Mesh(
-      new THREE.TorusGeometry(2.3, 0.02, 8, 72),
-      this._makeVibeShaderMaterial(0.0, 0.22, false)
-    );
-    synthRing.position.set(0, 0.35, -1.2);
-    terrainGroup.add(synthRing);
-    this.vibeMeshes.cyber_terrain = terrainGroup;
-
-    // 4. mist_prism (Melancholy)
-    const prismGroup = new THREE.Group();
-    prismGroup.add(
-      new THREE.Mesh(
-        new THREE.OctahedronGeometry(1.65, 0),
-        this._makeVibeShaderMaterial(3.0, 0.25, true)
-      )
-    );
-    prismGroup.add(
-      new THREE.Mesh(
-        new THREE.OctahedronGeometry(1.05, 0),
-        this._makeVibeShaderMaterial(3.0, 0.18, true)
-      )
-    );
-    this.vibeMeshes.mist_prism = prismGroup;
-
-    // 5. plasma_spike (Rock)
-    const spikeGroup = new THREE.Group();
-    spikeGroup.add(
-      new THREE.Mesh(
-        new THREE.IcosahedronGeometry(1.48, 3),
-        this._makeVibeShaderMaterial(4.0, 0.26, true)
-      )
-    );
-    this.vibeMeshes.plasma_spike = spikeGroup;
-
-    // 6. velvet_torus (Romantic)
-    const torusGroup = new THREE.Group();
-    torusGroup.add(
-      new THREE.Mesh(
-        new THREE.TorusKnotGeometry(1.05, 0.28, 110, 18),
-        this._makeVibeShaderMaterial(5.0, 0.24, true)
-      )
-    );
-    this.vibeMeshes.velvet_torus = torusGroup;
-
-    Object.values(this.vibeMeshes).forEach((group) => {
-      group.visible = false;
-      this.vibeGroup.add(group);
-    });
   }
 
   _initParticles() {
@@ -478,14 +297,6 @@ export class VibeScene3D {
       this.targetColors.base.set(cols[0]);
       this.targetColors.a.set(cols[1]);
       this.targetColors.b.set(cols[2]);
-    }
-
-    const activeGeom = this.vibe.geometry || "cyber_terrain";
-    Object.entries(this.vibeMeshes).forEach(([key, group]) => {
-      group.visible = key === activeGeom;
-    });
-    if (!this.vibeMeshes[activeGeom] && this.vibeMeshes.cyber_terrain) {
-      this.vibeMeshes.cyber_terrain.visible = true;
     }
 
     const modeKey = this.vibe.particle_mode || "float";
@@ -582,26 +393,6 @@ export class VibeScene3D {
     this.particleUniforms.uSpeed.value = speed;
     this.particleUniforms.uBass.value = this.audio.bass;
     this.particleUniforms.uTurbulence.value = turbulence;
-
-    this.meshUniforms.uTime.value = elapsed;
-    this.meshUniforms.uBass.value = this.audio.bass;
-    this.meshUniforms.uMid.value = this.audio.mid;
-    this.meshUniforms.uTurbulence.value = turbulence;
-
-    // Gentle audio-reactive centerpiece motion
-    const geomId = this.vibe.geometry || "cyber_terrain";
-    const activeMeshGroup = this.vibeMeshes[geomId];
-    if (activeMeshGroup) {
-      const rotScale = dt * (0.25 + speed * 0.3 + this.audio.mid * 0.45);
-      if (geomId === "cyber_terrain") {
-        activeMeshGroup.rotation.z = Math.sin(elapsed * 0.18) * 0.08 + this.mouse.x * 0.06;
-      } else {
-        activeMeshGroup.rotation.y += rotScale;
-        activeMeshGroup.rotation.x += rotScale * 0.45;
-      }
-      const pulse = 1.0 + this.audio.bass * 0.18;
-      activeMeshGroup.scale.setScalar(THREE.MathUtils.lerp(activeMeshGroup.scale.x, pulse, 0.2));
-    }
 
     this.renderer.render(this.scene, this.camera);
   }

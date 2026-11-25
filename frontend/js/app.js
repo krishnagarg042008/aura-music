@@ -1,4 +1,4 @@
-import { VibeScene3D } from "./scene3d.js";
+import { VibeScene3D } from "./scene3d.js?v=16";
 import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js";
 import { buildShuffledQueue, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js";
 

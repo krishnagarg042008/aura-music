@@ -1,4 +1,4 @@
-const CACHE_NAME = "aura-music-shell-v1";
+const CACHE_NAME = "aura-music-shell-v2";
 const SHELL_ASSETS = [
   "/",
   "/manifest.json",
