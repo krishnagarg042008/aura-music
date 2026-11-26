@@ -240,10 +240,10 @@ async def extract_palette(client: httpx.AsyncClient, image_url: str) -> List[str
                 accent_2 = rgb
                 break
 
-        # Deep atmospheric base color derived from dominant tone
+        # Deep atmospheric base color derived from dominant tone (keep above 8-bit crush zone)
         r, g, b = [c / 255.0 for c in accent_1]
         h, s, _ = colorsys.rgb_to_hsv(r, g, b)
-        base_rgb = tuple(int(c * 255) for c in colorsys.hsv_to_rgb(h, min(s, 0.75), 0.16))
+        base_rgb = tuple(int(c * 255) for c in colorsys.hsv_to_rgb(h, min(s, 0.75), 0.22))
 
         # Ensure accents are luminous enough for neon/glass highlights
         def boost(rgb_tuple: Tuple[int, int, int]) -> str:

@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Shippori+Mincho:wght@600;700&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&family=Zen+Kaku+Gothic+New:wght@700&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/styles.css?v=23" />
+  <link rel="stylesheet" href="/css/styles.css?v=24" />
 
   <script type="importmap">
     {
@@ -227,6 +227,10 @@
 
         <!-- Cinema Mode Controls (Replaces header-actions seamlessly) -->
         <div id="cinema-hud" class="cinema-hud hidden" aria-label="Cinema Mode Controls">
+          <button id="cinema-fx-btn" class="cinema-hud-pill glass-pill" title="EQ, Pastel Skies &amp; Visuals">
+            <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
+            <span>FX</span>
+          </button>
           <button id="cinema-queue-btn" class="cinema-hud-pill glass-pill" title="Toggle Queue">
             <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
             <span>Queue (<span id="cinema-queue-count">0</span>)</span>
@@ -630,6 +634,6 @@
   <div id="yt-player-box" style="position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-999;"></div>
 
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script type="module" src="/js/app.js?v=23"></script>
+  <script type="module" src="/js/app.js?v=24"></script>
 </body>
 </html>

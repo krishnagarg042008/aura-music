@@ -21,6 +21,7 @@ const BACKDROP_FRAG = `
   uniform float uSpeed;
   uniform float uTurbulence;
   uniform float uIntensity;
+  uniform float uAspect;
   uniform float uAnimeRay;
   uniform float uMangaTone;
   uniform float uPastelMode;
@@ -30,27 +31,41 @@ const BACKDROP_FRAG = `
   uniform vec3 uColorA;
   uniform vec3 uColorB;
 
-  float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+  // Trig-free hash avoids sin() precision block artifacts on Windows/ANGLE GPUs
+  float hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
   }
 
+  vec2 hashGrad(vec2 p) {
+    float a = hash12(p) * 6.2831853;
+    return vec2(cos(a), sin(a));
+  }
+
+  // Smooth C2 quintic gradient noise (eliminates axis-aligned square grid bumps)
   float noise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    float a = hash(i);
-    float b = hash(i + vec2(1.0, 0.0));
-    float c = hash(i + vec2(0.0, 1.0));
-    float d = hash(i + vec2(1.0, 1.0));
-    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+
+    float n00 = dot(hashGrad(i + vec2(0.0, 0.0)), f - vec2(0.0, 0.0));
+    float n10 = dot(hashGrad(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0));
+    float n01 = dot(hashGrad(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0));
+    float n11 = dot(hashGrad(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0));
+
+    float res = mix(mix(n00, n10, u.x), mix(n01, n11, u.x), u.y);
+    return clamp(0.5 + 0.5 * res, 0.0, 1.0);
   }
 
+  // Rotated multi-octave FBM prevents horizontal/vertical lattice alignment
   float fbm(vec2 p) {
     float v = 0.0;
     float a = 0.5;
+    mat2 rot = mat2(0.80, 0.60, -0.60, 0.80);
     for (int i = 0; i < 4; i++) {
       v += a * noise(p);
-      p = p * 2.04 + vec2(1.7, 9.2);
+      p = rot * p * 2.02 + vec2(13.7, 29.3);
       a *= 0.5;
     }
     return v;
@@ -58,34 +73,37 @@ const BACKDROP_FRAG = `
 
   void main() {
     vec2 uv = vUv;
+    vec2 aspScale = vec2(max(0.5, uAspect), 1.0);
     float t = uTime * 0.2 * uSpeed;
     float inten = clamp(uIntensity, 0.2, 1.8);
 
-    // Interactive click ripple
-    float dClick = length(uv - uClick);
-    float ripple = sin(dClick * 26.0 - uShock * 18.0) * exp(-dClick * 4.5) * exp(-uShock * 2.5);
-    uv += normalize(uv - uClick + 0.0001) * ripple * 0.03 * inten;
+    // Aspect-correct interactive click ripple
+    vec2 deltaClick = (uv - uClick) * aspScale;
+    float dClick = length(deltaClick);
+    float ripple = sin(dClick * 24.0 - uShock * 18.0) * exp(-dClick * 4.2) * exp(-uShock * 2.5);
+    uv += normalize(deltaClick + vec2(0.0001)) * ripple * 0.028 * inten;
 
-    // Liquid mesh flow modulated by turbulence, bass & mids
+    // Smooth aspect-balanced liquid domain flow
+    vec2 flowUv = (uv - 0.5) * aspScale + 0.5;
     float turb = clamp(uTurbulence, 0.3, 2.5);
     vec2 q = vec2(
-      fbm(uv * (1.85 + turb * 0.22) + vec2(t, -t * 0.6) + uMouse * 0.3),
-      fbm(uv * (1.85 + turb * 0.22) + vec2(-t * 0.5, t * 0.8))
+      fbm(flowUv * (1.45 + turb * 0.18) + vec2(t, -t * 0.6) + uMouse * 0.25),
+      fbm(flowUv * (1.45 + turb * 0.18) + vec2(-t * 0.5, t * 0.8))
     );
-    float f = fbm(uv * 2.4 + q * (1.45 + turb * 0.28 + uBass * 1.15 * inten));
+    float f = fbm(flowUv * 1.9 + q * (1.35 + turb * 0.24 + uBass * 1.05 * inten));
 
     vec3 col = mix(uColorBase, uColorA, smoothstep(0.18, 0.82, f));
-    col = mix(col, uColorB, smoothstep(0.46, 0.96, length(q) * 0.72 + (uBass * 0.2 + uMid * 0.14) * inten));
+    col = mix(col, uColorB, smoothstep(0.45, 0.94, length(q) * 0.72 + (uBass * 0.22 + uMid * 0.16) * inten));
 
     // Vocal/mid aurora ribbon across the upper atmosphere
-    float ribbonWave = sin(uv.x * 4.5 + t * 1.6 + q.x * 3.1) * 0.14 + 0.62;
-    float auroraBand = exp(-abs(uv.y - ribbonWave) * 8.5) * (0.08 + uMid * 0.26) * inten;
+    float ribbonWave = sin(uv.x * 4.2 + t * 1.5 + q.x * 2.8) * 0.14 + 0.60;
+    float auroraBand = exp(-abs(uv.y - ribbonWave) * 7.5) * (0.13 + uMid * 0.28) * inten;
     col += mix(uColorA, uColorB, uv.x) * auroraBand;
 
     // Anime Pastel Sky Presets (1=Daydream Clouds, 2=Peach Dusk, 3=Ghibli Breeze, 4=Night Lavender)
     if (uPastelMix > 0.01) {
       float drift = uTime * 0.032 * max(0.35, uSpeed);
-      vec2 cloudUv = vec2(uv.x * 1.7 - drift, uv.y * 2.15 + q.y * 0.12);
+      vec2 cloudUv = vec2(flowUv.x * 1.25 - drift, uv.y * 2.1 + q.y * 0.12);
       float cloudBase = fbm(cloudUv + vec2(0.0, uMid * 0.06));
       float cloudDetail = fbm(cloudUv * 2.3 + vec2(4.2, -drift * 1.4));
       float cloudMask = smoothstep(0.42, 0.72, cloudBase * 0.72 + cloudDetail * 0.28 + (0.08 - uv.y * 0.18));
@@ -138,11 +156,12 @@ const BACKDROP_FRAG = `
     }
 
     // Subtle treble sparkle & edge bloom
-    float shimmer = pow(noise(uv * 18.0 + vec2(t * 1.8, -t * 1.4)), 4.0) * uHigh * 0.22 * inten;
+    float shimmer = pow(noise(flowUv * 12.0 + vec2(t * 1.6, -t * 1.2)), 4.0) * uHigh * 0.22 * inten;
     col += uColorB * shimmer;
 
-    // Soft cursor glow + radial bass breath
-    float cursorGlow = exp(-length(vUv - (uMouse * 0.5 + 0.5)) * 4.0) * (0.12 + uBass * 0.2) * inten;
+    // Aspect-correct soft cursor glow + radial bass breath
+    float cursorDist = length((vUv - (uMouse * 0.5 + 0.5)) * aspScale);
+    float cursorGlow = exp(-cursorDist * 3.4) * (0.14 + uBass * 0.22) * inten;
     col += mix(uColorB, vec3(1.0, 0.86, 0.94), uPastelMix * 0.6) * cursorGlow;
 
     // Anime Makoto Shinkai twilight diagonal sunbeams
@@ -154,14 +173,17 @@ const BACKDROP_FRAG = `
 
     // Manga panel edge speed-lines reactive to bass hits
     if (uMangaTone > 0.01) {
-      vec2 centered = vUv - 0.5;
+      vec2 centered = (vUv - 0.5) * aspScale;
       float ang = atan(centered.y, centered.x);
       float rad = length(centered);
       float streak = pow(0.5 + 0.5 * sin(ang * 44.0 + floor(uTime * 10.0) * 0.35), 8.0);
-      col += vec3(0.88, 0.95, 1.0) * streak * smoothstep(0.26, 0.64, rad) * (0.04 + uBass * 0.14) * uMangaTone * inten;
+      col += vec3(0.88, 0.95, 1.0) * streak * smoothstep(0.26, 0.68, rad) * (0.04 + uBass * 0.14) * uMangaTone * inten;
     }
 
-    gl_FragColor = vec4(clamp(col * uLightGain, 0.0, 1.0), 1.0);
+    // Triangular screen-space dithering eliminates 8-bit contour banding in dark gradients
+    vec3 finalCol = clamp(col * uLightGain, 0.0, 1.0);
+    float dither = (hash12(gl_FragCoord.xy) + hash12(gl_FragCoord.xy + vec2(37.0, 19.0)) - 1.0) * (1.25 / 255.0);
+    gl_FragColor = vec4(clamp(finalCol + dither, 0.0, 1.0), 1.0);
   }
 `;
 
@@ -405,7 +427,7 @@ export class VibeScene3D {
     this.targetAnimeRay = 0.0;
     this.targetMangaTone = 0.0;
     this.targetPastelMix = 0.0;
-    this.targetLightGain = 0.72;
+    this.targetLightGain = 0.88;
     this.targetBrightMode = 0.0;
     this.audio = { bass: 0, mid: 0, high: 0 };
 
@@ -431,11 +453,12 @@ export class VibeScene3D {
       uSpeed: { value: 1.0 },
       uTurbulence: { value: 1.1 },
       uIntensity: { value: 1.0 },
+      uAspect: { value: window.innerWidth / Math.max(1, window.innerHeight) },
       uAnimeRay: { value: 0.0 },
       uMangaTone: { value: 0.0 },
       uPastelMode: { value: 1.0 },
       uPastelMix: { value: 0.0 },
-      uLightGain: { value: 0.72 },
+      uLightGain: { value: 0.88 },
       uColorBase: { value: this.targetColors.base.clone() },
       uColorA: { value: this.targetColors.a.clone() },
       uColorB: { value: this.targetColors.b.clone() },
@@ -534,7 +557,7 @@ export class VibeScene3D {
     const isPastelLightSkin = this.themeSkin === "pastel";
     const isBrightPastelSky = this.pastelBg === "daydream" || this.pastelBg === "peach" || this.pastelBg === "ghibli";
     const bright = isPastelLightSkin || isBrightPastelSky;
-    this.targetLightGain = isPastelLightSkin ? 0.98 : (isBrightPastelSky ? 0.86 : 0.72);
+    this.targetLightGain = isPastelLightSkin ? 0.98 : (isBrightPastelSky ? 0.90 : 0.88);
     this.targetBrightMode = bright ? 1.0 : 0.0;
 
     if (this.particleMat) {
@@ -586,11 +609,14 @@ export class VibeScene3D {
 
     this._onResize = () => {
       this.pixelRatio = Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.5 : 2);
-      this.camera.aspect = window.innerWidth / window.innerHeight;
+      const w = window.innerWidth;
+      const h = Math.max(1, window.innerHeight);
+      this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.renderer.setSize(w, h);
       this.renderer.setPixelRatio(this.pixelRatio);
       this.particleUniforms.uPixelRatio.value = this.pixelRatio;
+      this.bgUniforms.uAspect.value = w / h;
     };
 
     this._onVisibilityChange = () => {

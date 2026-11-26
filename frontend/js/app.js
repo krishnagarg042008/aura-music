@@ -1,4 +1,4 @@
-import { VibeScene3D } from "./scene3d.js?v=23";
+import { VibeScene3D } from "./scene3d.js?v=24";
 import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js?v=17";
 import { buildShuffledQueue, detectExternalMusicUrl, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js?v=20";
 
@@ -83,6 +83,7 @@ const offsetVal = document.getElementById("offset-val");
 const syncPopoverVal = document.getElementById("sync-popover-val");
 const immersionBtn = document.getElementById("immersion-btn");
 const cinemaHud = document.getElementById("cinema-hud");
+const cinemaFxBtn = document.getElementById("cinema-fx-btn");
 const cinemaExitBtn = document.getElementById("cinema-exit-btn");
 const cinemaFsBtn = document.getElementById("cinema-fs-btn");
 const appShell = document.getElementById("app");
@@ -2789,6 +2790,11 @@ window.addEventListener("mousemove", () => { if (isCinemaMode) resetCinemaInacti
 window.addEventListener("touchstart", () => { if (isCinemaMode) resetCinemaInactivity(); }, { passive: true });
 
 immersionBtn?.addEventListener("click", () => (isCinemaMode ? exitCinemaMode(true) : enterCinemaMode(false)));
+cinemaFxBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  syncAudioFxUI();
+  audioFxModal?.classList.remove("hidden");
+});
 cinemaExitBtn?.addEventListener("click", (e) => { e.stopPropagation(); exitCinemaMode(true); });
 cinemaFsBtn?.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(); });
 cinemaQueueBtn?.addEventListener("click", (e) => { e.stopPropagation(); toggleQueueDrawer(); });
@@ -2968,7 +2974,7 @@ function mainLoop(now) {
   } else {
     smoothBass *= 0.85;
     smoothMid *= 0.85;
-    scene3D.updateAudio(0.05, 0.04, 0.02);
+    scene3D.updateAudio(0.11, 0.09, 0.06);
     artContainer.style.setProperty("--bass", smoothBass.toFixed(3));
     artContainer.style.setProperty("--mid", smoothMid.toFixed(3));
     eqBars.forEach((bar) => { bar.style.height = "22%"; });
