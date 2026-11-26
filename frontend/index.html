@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Shippori+Mincho:wght@600;700&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&family=Zen+Kaku+Gothic+New:wght@700&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/styles.css?v=24" />
+  <link rel="stylesheet" href="/css/styles.css?v=25" />
 
   <script type="importmap">
     {
@@ -532,6 +532,32 @@
           <span>Cover Spectrum Halo</span>
           <input id="vis-halo-toggle" type="checkbox" checked />
         </label>
+        <label class="fx-toggle-row">
+          <span>Beat Sync</span>
+          <input id="vis-beatsync-toggle" type="checkbox" checked />
+        </label>
+        <div class="fx-toggle-row" id="beat-intensity-row">
+          <span>Beat Pulse</span>
+          <div class="crossfade-pills" id="beat-intensity-pills">
+            <button type="button" data-beat-int="subtle" class="beat-int-btn">Subtle</button>
+            <button type="button" data-beat-int="balanced" class="beat-int-btn active">Balanced</button>
+            <button type="button" data-beat-int="punchy" class="beat-int-btn">Punchy</button>
+          </div>
+        </div>
+        <div class="fx-toggle-row beat-tempo-row" id="beat-tempo-row">
+          <div class="beat-bpm-meta">
+            <span>Tempo Sync</span>
+            <div class="beat-bpm-readout">
+              <span id="beat-led" class="beat-led" aria-hidden="true"></span>
+              <span id="beat-bpm-val">-- BPM</span>
+              <span id="beat-bpm-source" class="beat-bpm-source">AUTO</span>
+            </div>
+          </div>
+          <div class="beat-tap-actions">
+            <button id="beat-tap-btn" type="button" class="beat-tap-btn" title="Tap repeatedly (or press T) to match the beat">Tap</button>
+            <button id="beat-auto-btn" type="button" class="beat-auto-btn hidden" title="Return to automatic BPM detection">Auto</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -634,6 +660,6 @@
   <div id="yt-player-box" style="position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-999;"></div>
 
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script type="module" src="/js/app.js?v=24"></script>
+  <script type="module" src="/js/app.js?v=25"></script>
 </body>
 </html>

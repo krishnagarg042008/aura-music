@@ -1,4 +1,5 @@
-import { VibeScene3D } from "./scene3d.js?v=24";
+import { VibeScene3D } from "./scene3d.js?v=25";
+import { BeatEngine } from "./beat-engine.js?v=1";
 import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js?v=17";
 import { buildShuffledQueue, detectExternalMusicUrl, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js?v=20";
 
@@ -150,6 +151,15 @@ const visSilhouetteToggle = document.getElementById("vis-silhouette-toggle");
 const animeSilhouetteLayer = document.getElementById("anime-silhouette-layer");
 const visParticlesToggle = document.getElementById("vis-particles-toggle");
 const visHaloToggle = document.getElementById("vis-halo-toggle");
+const visBeatSyncToggle = document.getElementById("vis-beatsync-toggle");
+const beatIntensityRow = document.getElementById("beat-intensity-row");
+const beatIntensityPills = document.getElementById("beat-intensity-pills");
+const beatTempoRow = document.getElementById("beat-tempo-row");
+const beatLed = document.getElementById("beat-led");
+const beatBpmVal = document.getElementById("beat-bpm-val");
+const beatBpmSource = document.getElementById("beat-bpm-source");
+const beatTapBtn = document.getElementById("beat-tap-btn");
+const beatAutoBtn = document.getElementById("beat-auto-btn");
 
 const scriptToggleBtn = document.getElementById("script-toggle-btn");
 const pasteLrcBtn = document.getElementById("paste-lrc-btn");
@@ -245,6 +255,8 @@ function loadPrefs() {
     albumBackdrop: true,
     particlesEnabled: true,
     spectrumHalo: true,
+    beatSync: true,
+    beatIntensity: "balanced",
   };
   try {
     const parsed = JSON.parse(localStorage.getItem(PREFS_KEY) || "null");
@@ -277,6 +289,9 @@ let isCrossfading = false;
 let crossfadeCleanupTimer = null;
 let smoothBass = 0;
 let smoothMid = 0;
+let currentVibeId = "synth";
+let lastBeatState = null;
+let silentFftFrames = 0;
 
 // YouTube IFrame Fallback State
 let ytPlayer = null;
@@ -284,6 +299,7 @@ let isUsingYTPlayer = false;
 
 // Engines
 const scene3D = new VibeScene3D(document.getElementById("bg-canvas"));
+const beatEngine = new BeatEngine();
 const lyricsEngine = new LyricsEngine(
   document.getElementById("lyrics-viewport"),
   document.getElementById("lyrics-container"),
@@ -319,6 +335,7 @@ function getEffectiveDuration() {
 
 function seekToSeconds(seconds) {
   const target = Math.max(0, Number(seconds) || 0);
+  beatEngine.onSeek();
   if (isUsingYTPlayer && ytPlayer && typeof ytPlayer.seekTo === "function") {
     ytPlayer.seekTo(target, true);
   } else {
@@ -387,6 +404,27 @@ function saveCustomLrc(videoId, rawText) {
       localStorage.removeItem("aura_custom_lrc_" + videoId);
     } else {
       localStorage.setItem("aura_custom_lrc_" + videoId, rawText);
+    }
+  } catch {}
+}
+
+function loadTrackBpm(videoId) {
+  if (!videoId) return 0;
+  try {
+    const saved = parseInt(localStorage.getItem("aura_track_bpm_" + videoId) || "", 10);
+    if (Number.isFinite(saved) && saved >= 45 && saved <= 220) return saved;
+  } catch {}
+  return 0;
+}
+
+function saveTrackBpm(videoId, bpm) {
+  if (!videoId) return;
+  try {
+    const val = Math.round(Number(bpm) || 0);
+    if (val >= 45 && val <= 220) {
+      localStorage.setItem("aura_track_bpm_" + videoId, String(val));
+    } else {
+      localStorage.removeItem("aura_track_bpm_" + videoId);
     }
   } catch {}
 }
@@ -569,6 +607,7 @@ function setPlayingVisualState(isPlaying) {
   miniPlayIcon?.classList.toggle("hidden", isPlaying);
   miniPauseIcon?.classList.toggle("hidden", !isPlaying);
   artContainer.classList.toggle("playing", isPlaying);
+  document.body.setAttribute("data-playing", String(Boolean(isPlaying)));
   updateMediaSessionState(isPlaying);
   renderQueue();
 }
@@ -702,12 +741,15 @@ function showToast(msg) {
 function exportLibraryBackup() {
   const syncOffsets = {};
   const customLyrics = {};
+  const trackBpms = {};
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (k?.startsWith("aura_sync_offset_")) {
       syncOffsets[k.slice("aura_sync_offset_".length)] = localStorage.getItem(k);
     } else if (k?.startsWith("aura_custom_lrc_")) {
       customLyrics[k.slice("aura_custom_lrc_".length)] = localStorage.getItem(k);
+    } else if (k?.startsWith("aura_track_bpm_")) {
+      trackBpms[k.slice("aura_track_bpm_".length)] = localStorage.getItem(k);
     }
   }
 
@@ -719,6 +761,7 @@ function exportLibraryBackup() {
     prefs,
     syncOffsets,
     customLyrics,
+    trackBpms,
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -754,6 +797,11 @@ function importLibraryBackup(file) {
       if (data.customLyrics && typeof data.customLyrics === "object") {
         Object.entries(data.customLyrics).forEach(([vid, val]) => {
           localStorage.setItem("aura_custom_lrc_" + vid, String(val));
+        });
+      }
+      if (data.trackBpms && typeof data.trackBpms === "object") {
+        Object.entries(data.trackBpms).forEach(([vid, val]) => {
+          localStorage.setItem("aura_track_bpm_" + vid, String(val));
         });
       }
       renderPlaylistsHome();
@@ -1325,6 +1373,14 @@ function syncAudioFxUI() {
   }
   if (visParticlesToggle) visParticlesToggle.checked = prefs.particlesEnabled !== false;
   if (visHaloToggle) visHaloToggle.checked = prefs.spectrumHalo !== false;
+  const beatEnabled = prefs.beatSync !== false;
+  if (visBeatSyncToggle) visBeatSyncToggle.checked = beatEnabled;
+  beatIntensityRow?.classList.toggle("is-disabled", !beatEnabled);
+  beatTempoRow?.classList.toggle("is-disabled", !beatEnabled);
+  beatIntensityPills?.querySelectorAll(".beat-int-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.beatInt === (prefs.beatIntensity || "balanced"));
+  });
+  updateBeatTempoUI(lastBeatState, document.body.getAttribute("data-playing") === "true", true);
   fxYtNotice?.classList.toggle("hidden", !isUsingYTPlayer);
 }
 
@@ -1332,6 +1388,10 @@ function applyVisualPreferences() {
   const intensity = ["minimal", "balanced", "vivid"].includes(prefs.visualIntensity)
     ? prefs.visualIntensity
     : "balanced";
+  const beatIntensity = ["subtle", "balanced", "punchy"].includes(prefs.beatIntensity)
+    ? prefs.beatIntensity
+    : "balanced";
+  const beatSync = prefs.beatSync !== false;
   const skin = ["default", "anime", "pastel", "manga"].includes(prefs.themeSkin)
     ? prefs.themeSkin
     : "default";
@@ -1346,6 +1406,8 @@ function applyVisualPreferences() {
   const showSilhouette = prefs.animeSilhouette === null ? autoSilhouette : Boolean(prefs.animeSilhouette);
 
   document.body.setAttribute("data-visual-intensity", intensity);
+  document.body.setAttribute("data-beat-sync", String(beatSync));
+  document.body.setAttribute("data-beat-intensity", beatIntensity);
   document.body.setAttribute("data-skin", skin);
   document.body.setAttribute("data-pastel-bg", pastelBg);
   document.body.setAttribute("data-bright-bg", String(isBrightCanvas));
@@ -1383,8 +1445,8 @@ function initWebAudio() {
 
     compressorNode = audioCtx.createDynamicsCompressor();
     analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.8;
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.55;
     masterGain = audioCtx.createGain();
 
     for (let i = 0; i < eqFilters.length - 1; i++) {
@@ -1529,6 +1591,62 @@ visHaloToggle?.addEventListener("change", () => {
   applyVisualPreferences();
 });
 
+function handleTapTempo(showFeedbackToast = false) {
+  const { tapBpm, tapsCount } = beatEngine.tap(performance.now());
+  if (tapBpm > 0 && currentTrack?.videoId) {
+    saveTrackBpm(currentTrack.videoId, tapBpm);
+  }
+  const isPlaying = document.body.getAttribute("data-playing") === "true";
+  const hasLiveFFT = !isUsingYTPlayer && Boolean(analyser && freqData && silentFftFrames < 120);
+  const snapState = beatEngine.getSnapshot({
+    isPlaying,
+    hasLiveFFT,
+    vibeId: currentVibeId,
+    enabled: prefs.beatSync !== false,
+    intensity: prefs.beatIntensity || "balanced",
+  });
+  lastBeatState = snapState;
+  updateBeatTempoUI(snapState, isPlaying, true);
+  if (showFeedbackToast) {
+    showToast(tapBpm > 0 ? `Tap Tempo: ${tapBpm} BPM` : `Tap ${tapsCount} — tap again to lock BPM`);
+  }
+}
+
+visBeatSyncToggle?.addEventListener("change", () => {
+  prefs.beatSync = Boolean(visBeatSyncToggle.checked);
+  savePrefs();
+  applyVisualPreferences();
+  syncAudioFxUI();
+});
+
+beatIntensityPills?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".beat-int-btn");
+  if (!btn) return;
+  prefs.beatIntensity = btn.dataset.beatInt || "balanced";
+  savePrefs();
+  applyVisualPreferences();
+  syncAudioFxUI();
+});
+
+beatTapBtn?.addEventListener("click", () => handleTapTempo(false));
+
+beatAutoBtn?.addEventListener("click", () => {
+  beatEngine.clearTap();
+  if (currentTrack?.videoId) saveTrackBpm(currentTrack.videoId, 0);
+  const isPlaying = document.body.getAttribute("data-playing") === "true";
+  const hasLiveFFT = !isUsingYTPlayer && Boolean(analyser && freqData && silentFftFrames < 120);
+  const snapState = beatEngine.getSnapshot({
+    isPlaying,
+    hasLiveFFT,
+    vibeId: currentVibeId,
+    enabled: prefs.beatSync !== false,
+    intensity: prefs.beatIntensity || "balanced",
+  });
+  lastBeatState = snapState;
+  updateBeatTempoUI(snapState, isPlaying, true);
+  showToast("Returned to automatic BPM sync");
+});
+
 // ================= MEDIA SESSION API =================
 let lastMediaPosUpdate = 0;
 
@@ -1607,6 +1725,7 @@ artContainer.addEventListener("mouseleave", () => {
 
 function applyVibe(vibeObj, keepAlbumColors = false) {
   const merged = { ...VIBE_PRESETS[vibeObj.id || "synth"], ...vibeObj };
+  currentVibeId = merged.id || "synth";
   const colors = keepAlbumColors && currentPalette ? currentPalette : (merged.colors || merged.default_colors);
   merged.colors = colors;
 
@@ -1786,6 +1905,9 @@ async function playTrack(idx) {
   const savedOffset = loadTrackOffset(track.videoId);
   lyricsEngine.offset = savedOffset;
   updateSyncUI(savedOffset);
+  beatEngine.resetTrack(loadTrackBpm(track.videoId));
+  silentFftFrames = 0;
+  lastBeatState = null;
   highlightPlayingRows();
   updateFavoriteButton();
   updateTrackDisplay(track);
@@ -1863,6 +1985,9 @@ function triggerCrossfade(nextIdx) {
     const savedOffset = loadTrackOffset(nextTrack.videoId);
     lyricsEngine.offset = savedOffset;
     updateSyncUI(savedOffset);
+    beatEngine.resetTrack(loadTrackBpm(nextTrack.videoId));
+    silentFftFrames = 0;
+    lastBeatState = null;
     loadTrackMetadata(nextTrack);
 
     crossfadeCleanupTimer = setTimeout(() => {
@@ -2894,10 +3019,76 @@ window.addEventListener("keydown", (e) => {
     toggleShuffle();
   } else if (e.key === "r" || e.key === "R") {
     cycleRepeatMode();
+  } else if (e.key === "t" || e.key === "T") {
+    handleTapTempo(true);
   }
 });
 
 // ================= 60FPS SYNC LOOP =================
+let lastBeatCssVal = "";
+let lastDownbeatCssVal = "";
+let lastBeatPeriodCss = "";
+let lastBpmText = "";
+let lastBpmSrcText = "";
+let lastBpmRefreshMs = 0;
+
+function applyBeatCssVars(pulse, downbeat, bpm) {
+  const pulseStr = pulse.toFixed(3);
+  const downStr = downbeat.toFixed(3);
+  const periodStr = `${(60 / Math.max(45, bpm || 118)).toFixed(3)}s`;
+
+  if (pulseStr !== lastBeatCssVal) {
+    lastBeatCssVal = pulseStr;
+    document.documentElement.style.setProperty("--beat", pulseStr);
+    artContainer.style.setProperty("--beat", pulseStr);
+  }
+  if (downStr !== lastDownbeatCssVal) {
+    lastDownbeatCssVal = downStr;
+    document.documentElement.style.setProperty("--downbeat", downStr);
+    artContainer.style.setProperty("--downbeat", downStr);
+  }
+  if (periodStr !== lastBeatPeriodCss) {
+    lastBeatPeriodCss = periodStr;
+    document.documentElement.style.setProperty("--beat-period", periodStr);
+  }
+}
+
+function updateBeatTempoUI(beatState, isPlaying, force = false) {
+  if (!audioFxModal || (!force && audioFxModal.classList.contains("hidden"))) return;
+
+  if (beatLed) {
+    const raw = isPlaying && beatState ? beatState.rawPulse : 0;
+    const isLit = raw > 0.32;
+    beatLed.classList.toggle("lit", isLit);
+    beatLed.style.transform = `scale(${(1 + raw * 0.45).toFixed(2)})`;
+  }
+
+  const now = performance.now();
+  if (!force && now - lastBpmRefreshMs < 140) return;
+  lastBpmRefreshMs = now;
+
+  const hasTap = beatState?.bpmSource === "tap";
+  const showBpm = Boolean(beatState && (isPlaying || hasTap));
+  const bpmText = showBpm ? `${beatState.bpm} BPM` : "-- BPM";
+  const srcMap = {
+    live: "LIVE",
+    tap: "TAP",
+    detecting: "SYNC...",
+    est: "EST",
+  };
+  const srcText = beatState ? (srcMap[beatState.bpmSource] || "AUTO") : "AUTO";
+
+  if (beatBpmVal && bpmText !== lastBpmText) {
+    lastBpmText = bpmText;
+    beatBpmVal.textContent = bpmText;
+  }
+  if (beatBpmSource && srcText !== lastBpmSrcText) {
+    lastBpmSrcText = srcText;
+    beatBpmSource.textContent = srcText;
+  }
+  beatAutoBtn?.classList.toggle("hidden", !hasTap);
+}
+
 function mainLoop(now) {
   requestAnimationFrame(mainLoop);
 
@@ -2929,56 +3120,91 @@ function mainLoop(now) {
     }
   }
 
+  const hasAnalyser = !isUsingYTPlayer && Boolean(analyser && freqData && freqData.length >= 16);
+
   if (isPlaying) {
     let bNorm = 0;
     let mNorm = 0;
     let hNorm = 0;
+    let hasLiveFFT = false;
 
-    if (!isUsingYTPlayer && analyser && freqData) {
+    if (hasAnalyser) {
       analyser.getByteFrequencyData(freqData);
       let bass = 0, mid = 0, high = 0;
-      for (let i = 0; i < 8; i++) bass += freqData[i];
-      for (let i = 8; i < 40; i++) mid += freqData[i];
-      for (let i = 40; i < 100; i++) high += freqData[i];
+      for (let i = 0; i < 6; i++) bass += freqData[i];
+      for (let i = 6; i < 33; i++) mid += freqData[i];
+      for (let i = 33; i < 106; i++) high += freqData[i];
 
-      bNorm = bass / (8 * 255);
-      mNorm = mid / (32 * 255);
-      hNorm = high / (60 * 255);
+      bNorm = bass / (6 * 255);
+      mNorm = mid / (27 * 255);
+      hNorm = high / (73 * 255);
+
+      if (bNorm + mNorm + hNorm < 0.008) {
+        silentFftFrames += 1;
+      } else {
+        silentFftFrames = 0;
+      }
+      hasLiveFFT = silentFftFrames < 120;
+    } else {
+      silentFftFrames = 0;
     }
 
-    const t = now * 0.004;
-    const fftSilent = bNorm + mNorm + hNorm < 0.01;
-    if (fftSilent || isUsingYTPlayer) {
-      bNorm = 0.25 + 0.2 * Math.abs(Math.sin(t));
-      mNorm = 0.2 + 0.18 * Math.abs(Math.sin(t * 1.4 + 1));
-      hNorm = 0.15 + 0.15 * Math.abs(Math.cos(t * 1.9));
+    const beatState = beatEngine.update(now, hasLiveFFT ? freqData : null, {
+      isPlaying: true,
+      hasLiveFFT,
+      vibeId: currentVibeId,
+      enabled: prefs.beatSync !== false,
+      intensity: prefs.beatIntensity || "balanced",
+    });
+    lastBeatState = beatState;
+
+    if (!hasLiveFFT) {
+      bNorm = beatState.synthBands.bass;
+      mNorm = beatState.synthBands.mid;
+      hNorm = beatState.synthBands.high;
     }
 
     smoothBass += (bNorm - smoothBass) * 0.28;
     smoothMid += (mNorm - smoothMid) * 0.22;
 
-    scene3D.updateAudio(bNorm, mNorm, hNorm);
+    const beatPulse = beatState.pulse;
+    const downbeat = beatState.downbeat;
+    scene3D.updateAudio(bNorm, mNorm, hNorm, beatPulse, downbeat, beatState.phase);
+    applyBeatCssVars(beatPulse, downbeat, beatState.bpm);
     artContainer.style.setProperty("--bass", smoothBass.toFixed(3));
     artContainer.style.setProperty("--mid", smoothMid.toFixed(3));
 
-    const bins = [2, 6, 14, 26, 44];
+    const bins = [1, 3, 9, 22, 48];
     eqBars.forEach((bar, i) => {
-      const level = (fftSilent || isUsingYTPlayer)
-        ? 0.25 + 0.65 * Math.abs(Math.sin(t * (1.2 + i * 0.35) + i))
-        : Math.max(0.18, (freqData[bins[i]] || 0) / 255);
+      const level = !hasLiveFFT
+        ? Math.min(1, 0.22 + beatState.rawPulse * (0.48 - i * 0.04) + 0.34 * Math.abs(Math.sin(beatState.phase * Math.PI * 2 + i * 0.7)))
+        : Math.min(1, Math.max(0.18, (freqData[bins[i]] || 0) / 255 + beatPulse * 0.14));
       bar.style.height = `${Math.round(level * 100)}%`;
     });
 
-    drawCoverSpectrumHalo(now, bNorm, mNorm, hNorm, true);
+    drawCoverSpectrumHalo(now, bNorm, mNorm, hNorm, true, beatState, hasLiveFFT);
+    updateBeatTempoUI(beatState, true);
     updateMediaSessionPosition(false);
   } else {
+    silentFftFrames = 0;
+    const beatState = beatEngine.update(now, null, {
+      isPlaying: false,
+      hasLiveFFT: false,
+      vibeId: currentVibeId,
+      enabled: prefs.beatSync !== false,
+      intensity: prefs.beatIntensity || "balanced",
+    });
+    lastBeatState = beatState;
+
     smoothBass *= 0.85;
     smoothMid *= 0.85;
-    scene3D.updateAudio(0.11, 0.09, 0.06);
+    scene3D.updateAudio(0.11, 0.09, 0.06, 0, 0, beatState.phase);
+    applyBeatCssVars(0, 0, beatState.bpm);
     artContainer.style.setProperty("--bass", smoothBass.toFixed(3));
     artContainer.style.setProperty("--mid", smoothMid.toFixed(3));
     eqBars.forEach((bar) => { bar.style.height = "22%"; });
-    drawCoverSpectrumHalo(now, 0.03, 0.02, 0.02, false);
+    drawCoverSpectrumHalo(now, 0.03, 0.02, 0.02, false, beatState, false);
+    updateBeatTempoUI(beatState, false);
   }
 
   if (effectiveDuration > 0) {
@@ -3004,7 +3230,7 @@ function mainLoop(now) {
 let activeHaloAccent1 = "#ec4899";
 let activeHaloAccent2 = "#06b6d4";
 
-function drawCoverSpectrumHalo(now, bass, mid, high, isPlaying) {
+function drawCoverSpectrumHalo(now, bass, mid, high, isPlaying, beatState = null, hasLiveFFTArg = null) {
   if (!coverHaloCanvas || !coverHaloCtx || prefs.spectrumHalo === false || document.hidden) return;
 
   const rect = coverHaloCanvas.getBoundingClientRect();
@@ -3034,6 +3260,11 @@ function drawCoverSpectrumHalo(now, bass, mid, high, isPlaying) {
   const baseHalf = Math.min(cx, cy) - 34;
   if (baseHalf <= 16) return;
 
+  const beatPulse = beatState?.enabled ? (beatState.pulse || 0) : 0;
+  const downbeat = beatState?.enabled ? (beatState.downbeat || 0) : 0;
+  const beatPhase = beatState?.phase || 0;
+  const haloRadius = baseHalf + beatPulse * 4.5 * inten;
+
   const bars = 68;
   const phaseShift = now * 0.0008;
   const grad = ctx.createLinearGradient(0, 0, rect.width, rect.height);
@@ -3052,38 +3283,61 @@ function drawCoverSpectrumHalo(now, bass, mid, high, isPlaying) {
   // Subtle squircle orbital perimeter hugging the rounded album art
   ctx.save();
   ctx.strokeStyle = grad;
-  ctx.globalAlpha = Math.min(0.6, (0.14 + smoothBass * 0.34) * inten);
-  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = Math.min(0.75, (0.14 + smoothBass * 0.32 + beatPulse * 0.22) * inten);
+  ctx.lineWidth = 1.5 + beatPulse * 0.9;
   ctx.beginPath();
   for (let i = 0; i <= 72; i++) {
-    const pt = squircle((i / 72) * Math.PI * 2, baseHalf);
+    const pt = squircle((i / 72) * Math.PI * 2, haloRadius);
     if (i === 0) ctx.moveTo(pt.x, pt.y);
     else ctx.lineTo(pt.x, pt.y);
   }
   ctx.closePath();
   ctx.stroke();
 
+  // Expanding downbeat shockwave ring
+  if (downbeat > 0.05 && isPlaying) {
+    const shockAlpha = Math.max(0, (1 - beatPhase) * Math.min(1, downbeat) * 0.45 * inten);
+    if (shockAlpha > 0.01) {
+      const shockRad = haloRadius + 2 + beatPhase * 22 * inten;
+      ctx.save();
+      ctx.globalAlpha = shockAlpha;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      for (let i = 0; i <= 72; i++) {
+        const pt = squircle((i / 72) * Math.PI * 2, shockRad);
+        if (i === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // Radial spectrum rays extending smoothly from the squircle perimeter
   ctx.lineCap = "round";
   ctx.lineWidth = 2.4;
-  ctx.globalAlpha = Math.min(0.85, (isPlaying ? 0.58 : 0.18) * inten);
+  ctx.globalAlpha = Math.min(0.88, (isPlaying ? 0.58 + beatPulse * 0.16 : 0.18) * inten);
 
-  const hasLiveFFT = !isUsingYTPlayer && analyser && freqData && freqData.length >= 64 && bass + mid + high >= 0.01;
+  const hasLiveFFT = hasLiveFFTArg !== null
+    ? Boolean(hasLiveFFTArg && analyser && freqData && freqData.length >= 64)
+    : (!isUsingYTPlayer && analyser && freqData && freqData.length >= 64 && bass + mid + high >= 0.01);
+
   for (let i = 0; i < bars; i++) {
     const theta = (i / bars) * Math.PI * 2;
     let amp;
     if (hasLiveFFT) {
-      const binIdx = 2 + Math.floor((i % (bars / 2)) * 2.1);
+      const binIdx = 1 + Math.floor((i % (bars / 2)) * 2.4);
       amp = (freqData[binIdx] || 0) / 255;
     } else {
       const t = now * 0.003;
       const wave1 = Math.abs(Math.sin(i * 0.35 + t * 1.4 + phaseShift));
       const wave2 = Math.abs(Math.cos(i * 0.65 - t * 1.9));
-      amp = (wave1 * 0.55 + wave2 * 0.45) * (0.3 + smoothBass * 0.75 + smoothMid * 0.35);
+      amp = (wave1 * 0.55 + wave2 * 0.45) * (0.28 + smoothBass * 0.65 + smoothMid * 0.3 + beatPulse * 0.35);
     }
 
-    const barLen = Math.min(24, (3 + amp * 16) * inten);
-    const ptIn = squircle(theta, baseHalf + 1);
+    const barLen = Math.min(28, (3 + amp * 16 + beatPulse * 6.5) * inten);
+    const ptIn = squircle(theta, haloRadius + 1);
     const nx = ptIn.x - cx;
     const ny = ptIn.y - cy;
     const nLen = Math.hypot(nx, ny) || 1;

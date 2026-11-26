@@ -12,6 +12,11 @@ import {
   transliterateLine,
   transliterateWords,
 } from "../frontend/js/transliterate.js";
+import {
+  BeatEngine,
+  VIBE_BEAT_GAIN,
+  VIBE_DEFAULT_BPM,
+} from "../frontend/js/beat-engine.js";
 
 test("parseClientLrc parses standard LRC and skips metadata headers", () => {
   const raw = [
@@ -139,4 +144,110 @@ test("detectExternalMusicUrl recognizes Spotify, Apple Music, and YouTube playli
   assert.equal(detectExternalMusicUrl("https://music.youtube.com/playlist?list=PL123456"), "youtube");
   assert.equal(detectExternalMusicUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), null);
   assert.equal(detectExternalMusicUrl("Blinding Lights The Weeknd"), null);
+});
+
+test("BeatEngine detects periodic 120 BPM kick onsets from live FFT spectrum", () => {
+  const engine = new BeatEngine();
+  const quiet = new Uint8Array(256).fill(8);
+  const kick = new Uint8Array(256).fill(18);
+  kick[0] = 245;
+  kick[1] = 235;
+  kick[2] = 210;
+  kick[3] = 175;
+  for (let i = 4; i < 16; i++) kick[i] = 135;
+
+  let beatsDetected = 0;
+  let lastState = null;
+
+  // Simulate 60fps for 4.5 seconds with a kick every 500ms (120 BPM)
+  for (let frame = 0; frame < 270; frame++) {
+    const nowMs = frame * (1000 / 60);
+    const msIntoBeat = nowMs % 500;
+    const spectrum = msIntoBeat < 45 ? kick : quiet;
+    lastState = engine.update(nowMs, spectrum, {
+      isPlaying: true,
+      hasLiveFFT: true,
+      vibeId: "hype",
+      enabled: true,
+      intensity: "balanced",
+    });
+    if (lastState.isBeat) beatsDetected += 1;
+  }
+
+  assert.ok(beatsDetected >= 6, `expected >= 6 beats, got ${beatsDetected}`);
+  assert.equal(lastState.bpmSource, "live");
+  assert.ok(
+    lastState.bpm >= 115 && lastState.bpm <= 125,
+    `expected ~120 BPM, got ${lastState.bpm}`
+  );
+  assert.ok(lastState.confidence > 0.5);
+});
+
+test("BeatEngine gates silence and resets cleanly on track change", () => {
+  const engine = new BeatEngine();
+  const silence = new Uint8Array(256).fill(0);
+  let state = null;
+  for (let i = 0; i < 60; i++) {
+    state = engine.update(i * 16.67, silence, {
+      isPlaying: true,
+      hasLiveFFT: true,
+      vibeId: "synth",
+      enabled: true,
+      intensity: "balanced",
+    });
+    assert.equal(state.isBeat, false);
+  }
+  assert.equal(state.bpmSource, "detecting");
+  assert.equal(state.bpm, VIBE_DEFAULT_BPM.synth);
+
+  engine.tap(1000);
+  engine.tap(1500);
+  assert.equal(engine.tapBpm, 120);
+
+  engine.resetTrack(0);
+  assert.equal(engine.tapBpm, 0);
+  assert.equal(engine.beatCount, 0);
+});
+
+test("BeatEngine supports Tap Tempo, vibe scaling, and YouTube Embed fallback", () => {
+  const engine = new BeatEngine();
+
+  // Fallback mode without live FFT synthesizes BPM-locked beats
+  let fallbackBeats = 0;
+  let last = null;
+  for (let f = 0; f < 180; f++) {
+    last = engine.update(f * (1000 / 60), null, {
+      isPlaying: true,
+      hasLiveFFT: false,
+      vibeId: "synth",
+      enabled: true,
+      intensity: "balanced",
+    });
+    if (last.isBeat) fallbackBeats += 1;
+  }
+  assert.equal(last.bpmSource, "est");
+  assert.equal(last.bpm, VIBE_DEFAULT_BPM.synth);
+  assert.ok(fallbackBeats >= 4, `expected fallback beats, got ${fallbackBeats}`);
+  assert.ok(last.synthBands.bass > 0.1);
+
+  // Tap Tempo overrides fallback BPM (462ms -> ~130 BPM)
+  engine.tap(2000);
+  const tapped = engine.tap(2462);
+  assert.ok(tapped.tapBpm >= 128 && tapped.tapBpm <= 132);
+
+  const hypeSnap = engine.getSnapshot({ isPlaying: true, vibeId: "hype", enabled: true, intensity: "balanced" });
+  const chillSnap = engine.getSnapshot({ isPlaying: true, vibeId: "chill", enabled: true, intensity: "balanced" });
+  assert.equal(hypeSnap.bpmSource, "tap");
+  assert.ok(hypeSnap.pulse > chillSnap.pulse);
+  assert.ok(VIBE_BEAT_GAIN.hype > VIBE_BEAT_GAIN.chill);
+
+  // Disabled Beat Sync zeros visual beat pulse while keeping tempo tracking
+  const mutedSnap = engine.getSnapshot({ isPlaying: true, vibeId: "hype", enabled: false, intensity: "punchy" });
+  assert.equal(mutedSnap.pulse, 0);
+  assert.equal(mutedSnap.downbeat, 0);
+
+  engine.clearTap();
+  const autoSnap = engine.getSnapshot({ isPlaying: true, hasLiveFFT: false, vibeId: "chill", enabled: true });
+  assert.equal(autoSnap.bpmSource, "est");
+  assert.equal(autoSnap.bpm, VIBE_DEFAULT_BPM.chill);
 });

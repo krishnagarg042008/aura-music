@@ -18,6 +18,9 @@ const BACKDROP_FRAG = `
   uniform float uBass;
   uniform float uMid;
   uniform float uHigh;
+  uniform float uBeat;
+  uniform float uDownbeat;
+  uniform float uBeatPhase;
   uniform float uSpeed;
   uniform float uTurbulence;
   uniform float uIntensity;
@@ -90,14 +93,14 @@ const BACKDROP_FRAG = `
       fbm(flowUv * (1.45 + turb * 0.18) + vec2(t, -t * 0.6) + uMouse * 0.25),
       fbm(flowUv * (1.45 + turb * 0.18) + vec2(-t * 0.5, t * 0.8))
     );
-    float f = fbm(flowUv * 1.9 + q * (1.35 + turb * 0.24 + uBass * 1.05 * inten));
+    float f = fbm(flowUv * 1.9 + q * (1.35 + turb * 0.24 + (uBass * 1.05 + uBeat * 0.42) * inten));
 
     vec3 col = mix(uColorBase, uColorA, smoothstep(0.18, 0.82, f));
-    col = mix(col, uColorB, smoothstep(0.45, 0.94, length(q) * 0.72 + (uBass * 0.22 + uMid * 0.16) * inten));
+    col = mix(col, uColorB, smoothstep(0.45, 0.94, length(q) * 0.72 + (uBass * 0.22 + uMid * 0.16 + uBeat * 0.14) * inten));
 
     // Vocal/mid aurora ribbon across the upper atmosphere
     float ribbonWave = sin(uv.x * 4.2 + t * 1.5 + q.x * 2.8) * 0.14 + 0.60;
-    float auroraBand = exp(-abs(uv.y - ribbonWave) * 7.5) * (0.13 + uMid * 0.28) * inten;
+    float auroraBand = exp(-abs(uv.y - ribbonWave) * 7.5) * (0.13 + uMid * 0.28 + uBeat * 0.14) * inten;
     col += mix(uColorA, uColorB, uv.x) * auroraBand;
 
     // Anime Pastel Sky Presets (1=Daydream Clouds, 2=Peach Dusk, 3=Ghibli Breeze, 4=Night Lavender)
@@ -156,19 +159,27 @@ const BACKDROP_FRAG = `
     }
 
     // Subtle treble sparkle & edge bloom
-    float shimmer = pow(noise(flowUv * 12.0 + vec2(t * 1.6, -t * 1.2)), 4.0) * uHigh * 0.22 * inten;
+    float shimmer = pow(noise(flowUv * 12.0 + vec2(t * 1.6, -t * 1.2)), 4.0) * (uHigh + uBeat * 0.18) * 0.22 * inten;
     col += uColorB * shimmer;
 
     // Aspect-correct soft cursor glow + radial bass breath
     float cursorDist = length((vUv - (uMouse * 0.5 + 0.5)) * aspScale);
-    float cursorGlow = exp(-cursorDist * 3.4) * (0.14 + uBass * 0.22) * inten;
+    float cursorGlow = exp(-cursorDist * 3.4) * (0.14 + uBass * 0.22 + uBeat * 0.12) * inten;
     col += mix(uColorB, vec3(1.0, 0.86, 0.94), uPastelMix * 0.6) * cursorGlow;
+
+    // Beat-synced radial bloom + subtle downbeat halo pulse
+    vec2 centeredBeat = (vUv - 0.5) * aspScale;
+    float beatRad = length(centeredBeat);
+    float downbeatWave = exp(-abs(beatRad - uBeatPhase * 0.85) * 9.5) * uDownbeat * 0.11 * inten;
+    float beatAura = smoothstep(0.85, 0.12, beatRad) * uBeat * 0.085 * inten;
+    float beatDarkScale = mix(1.0, 0.38, uPastelMix);
+    col += mix(uColorA, uColorB, 0.5 + 0.5 * sin(uTime * 0.5)) * (downbeatWave + beatAura) * beatDarkScale;
 
     // Anime Makoto Shinkai twilight diagonal sunbeams
     if (uAnimeRay > 0.01) {
       float rayAxis = (uv.x * 0.72 + uv.y * 0.95) * 6.5 - t * 0.42;
       float rays = pow(0.5 + 0.5 * sin(rayAxis), 4.0) * smoothstep(0.12, 0.95, uv.y) * uAnimeRay;
-      col += mix(vec3(1.0, 0.56, 0.80), vec3(0.45, 0.84, 1.0), uv.x) * rays * (0.14 + uMid * 0.18) * inten;
+      col += mix(vec3(1.0, 0.56, 0.80), vec3(0.45, 0.84, 1.0), uv.x) * rays * (0.14 + uMid * 0.18 + uBeat * 0.12) * inten;
     }
 
     // Manga panel edge speed-lines reactive to bass hits
@@ -177,7 +188,7 @@ const BACKDROP_FRAG = `
       float ang = atan(centered.y, centered.x);
       float rad = length(centered);
       float streak = pow(0.5 + 0.5 * sin(ang * 44.0 + floor(uTime * 10.0) * 0.35), 8.0);
-      col += vec3(0.88, 0.95, 1.0) * streak * smoothstep(0.26, 0.68, rad) * (0.04 + uBass * 0.14) * uMangaTone * inten;
+      col += vec3(0.88, 0.95, 1.0) * streak * smoothstep(0.26, 0.68, rad) * (0.04 + uBass * 0.14 + uBeat * 0.14) * uMangaTone * inten;
     }
 
     // Triangular screen-space dithering eliminates 8-bit contour banding in dark gradients
@@ -190,10 +201,13 @@ const BACKDROP_FRAG = `
 const PARTICLE_VERT = `
   attribute vec3 aSeed;
   uniform float uTime;
+  uniform float uBeatTime;
   uniform float uSpeed;
   uniform float uBass;
   uniform float uMid;
   uniform float uHigh;
+  uniform float uBeat;
+  uniform float uDownbeat;
   uniform float uTurbulence;
   uniform float uMode;
   uniform float uIntensity;
@@ -207,44 +221,45 @@ const PARTICLE_VERT = `
     float s1 = aSeed.x;
     float s2 = aSeed.y;
     float s3 = aSeed.z;
-    float boost = 1.0 + uBass * 2.2 * clamp(uIntensity, 0.3, 1.6);
-    float t = uTime * (0.55 + uSpeed * 0.45);
+    float boost = 1.0 + (uBass * 2.2 + uBeat * 0.9) * clamp(uIntensity, 0.3, 1.6);
+    float bt = mix(uTime, uBeatTime, 0.65);
+    float t = bt * (0.55 + uSpeed * 0.45);
 
     if (uMode > 2.5 && uMode < 3.5) {
       // Rain: downward diagonal streaks
       float spanY = 14.0;
-      p.y = 7.0 - mod(7.0 - p.y + uTime * (4.2 + s1 * 3.1), spanY);
-      p.x = mod(p.x - uTime * 0.55 + 11.0, 22.0) - 11.0;
+      p.y = 7.0 - mod(7.0 - p.y + bt * (4.2 + s1 * 3.1), spanY);
+      p.x = mod(p.x - bt * 0.55 + 11.0, 22.0) - 11.0;
     } else if (uMode > 3.5 && uMode < 4.5) {
       // Embers: turbulent rising sparks
       float spanY = 14.0;
-      p.y = mod(p.y + 7.0 + uTime * (1.6 + s1 * 2.1) * boost, spanY) - 7.0;
-      p.x += sin(uTime * 2.4 + s2 * 18.0) * 0.65 * uTurbulence;
+      p.y = mod(p.y + 7.0 + bt * (1.6 + s1 * 2.1) * boost, spanY) - 7.0;
+      p.x += sin(bt * 2.4 + s2 * 18.0) * 0.65 * uTurbulence;
     } else if (uMode > 1.5 && uMode < 2.5) {
       // Warp: stars flying forward toward camera
       float spanZ = 17.0;
-      p.z = mod(p.z + 15.0 + uTime * (2.6 + s1 * 3.0) * boost, spanZ) - 15.0;
+      p.z = mod(p.z + 15.0 + bt * (2.6 + s1 * 3.0) * boost, spanZ) - 15.0;
     } else if (uMode > 0.5 && uMode < 1.5) {
       // Burst: radial pulse expansion
-      float cycle = fract(s3 + uTime * (0.20 + uBass * 0.38) * max(0.5, uSpeed));
+      float cycle = fract(s3 + bt * (0.20 + uBass * 0.38 + uBeat * 0.24) * max(0.5, uSpeed));
       float angle = s2 * 6.2831853;
-      float radius = 0.8 + cycle * 10.5;
+      float radius = 0.8 + cycle * (10.5 + uBeat * 1.4);
       p.x = cos(angle) * radius * 1.35;
       p.y = sin(angle) * radius * 0.9;
       p.z = -3.0 - (1.0 - cycle) * 8.0;
     } else if (uMode > 5.5 && uMode < 6.5) {
       // Diya (Spiritual): slow gently rising sacred warm lights
       float spanY = 14.0;
-      p.y = mod(p.y + 7.0 + uTime * (0.48 + s1 * 0.55) * (1.0 + uMid * 0.8), spanY) - 7.0;
-      p.x += sin(uTime * 0.7 + s2 * 14.0) * 0.38;
+      p.y = mod(p.y + 7.0 + bt * (0.48 + s1 * 0.55) * (1.0 + uMid * 0.8), spanY) - 7.0;
+      p.x += sin(bt * 0.7 + s2 * 14.0) * 0.38;
     } else if (uMode > 7.5) {
       // Sakura (Anime): cherry blossom petals drifting & fluttering in diagonal breeze
       float spanY = 14.0;
-      float fallRate = 1.05 + s1 * 1.1 + uBass * 0.45;
-      p.y = 7.0 - mod(7.0 - p.y + uTime * fallRate, spanY);
-      float breeze = sin(uTime * 1.25 + s2 * 16.0 + p.y * 0.45) * 0.85;
-      p.x = mod(p.x - uTime * (0.52 + s3 * 0.35) + breeze + 11.0, 22.0) - 11.0;
-      p.z += cos(uTime * 1.05 + s1 * 12.0) * 0.35;
+      float fallRate = 1.05 + s1 * 1.1 + uBass * 0.45 + uBeat * 0.35;
+      p.y = 7.0 - mod(7.0 - p.y + bt * fallRate, spanY);
+      float breeze = sin(bt * 1.25 + s2 * 16.0 + p.y * 0.45) * (0.85 + uBeat * 0.25);
+      p.x = mod(p.x - bt * (0.52 + s3 * 0.35) + breeze + 11.0, 22.0) - 11.0;
+      p.z += cos(bt * 1.05 + s1 * 12.0) * 0.35;
     } else if (uMode > 6.5) {
       // Astral (Cosmic): slow celestial orbital field
       float drift = t * 0.28 + s2 * 6.28318;
@@ -258,9 +273,11 @@ const PARTICLE_VERT = `
       p.y += sin(drift * 1.3 + s1 * 10.0) * 0.55;
     } else {
       // Float (Chill): gentle ambient aqua suspension
-      p.y += sin(uTime * 0.55 + s1 * 20.0) * 0.55;
-      p.x += cos(uTime * 0.35 + s2 * 15.0) * 0.45;
+      p.y += sin(bt * 0.55 + s1 * 20.0) * 0.55;
+      p.x += cos(bt * 0.35 + s2 * 15.0) * 0.45;
     }
+
+    p.xy *= 1.0 + (uBeat * 0.055 + uDownbeat * 0.03) * clamp(uIntensity, 0.3, 1.5);
 
     vSeed = s1;
     vHigh = uHigh;
@@ -268,11 +285,11 @@ const PARTICLE_VERT = `
     gl_Position = projectionMatrix * mvPos;
 
     float depthFade = clamp(1.0 - (-mvPos.z / 20.0), 0.15, 1.0);
-    vAlpha = depthFade * (0.35 + 0.35 * sin(uTime * 1.4 + s2 * 12.0) + (uBass * 0.25 + uMid * 0.12)) * clamp(uIntensity, 0.35, 1.4);
+    vAlpha = depthFade * (0.35 + 0.35 * sin(uTime * 1.4 + s2 * 12.0) + (uBass * 0.25 + uMid * 0.12 + uBeat * 0.22)) * clamp(uIntensity, 0.35, 1.4);
 
     float sizeScale = (uMode > 7.5 || (uMode > 2.5 && uMode < 3.5)) ? 26.0 : (uMode > 4.5 && uMode < 6.5 ? 24.0 : 18.0);
-    float baseSize = (sizeScale + s1 * 16.0 + uBass * 13.0) * uPixelRatio;
-    gl_PointSize = clamp(baseSize / max(1.0, -mvPos.z), 2.0, 22.0);
+    float baseSize = (sizeScale + s1 * 16.0 + uBass * 13.0 + uBeat * 8.5) * uPixelRatio;
+    gl_PointSize = clamp(baseSize / max(1.0, -mvPos.z), 2.0, 26.0);
   }
 `;
 
@@ -429,7 +446,8 @@ export class VibeScene3D {
     this.targetPastelMix = 0.0;
     this.targetLightGain = 0.88;
     this.targetBrightMode = 0.0;
-    this.audio = { bass: 0, mid: 0, high: 0 };
+    this.beatTime = 0;
+    this.audio = { bass: 0, mid: 0, high: 0, beat: 0, downbeat: 0, beatPhase: 0 };
 
     this._initBackdrop();
     this._initParticles();
@@ -450,6 +468,9 @@ export class VibeScene3D {
       uBass: { value: 0 },
       uMid: { value: 0 },
       uHigh: { value: 0 },
+      uBeat: { value: 0 },
+      uDownbeat: { value: 0 },
+      uBeatPhase: { value: 0 },
       uSpeed: { value: 1.0 },
       uTurbulence: { value: 1.1 },
       uIntensity: { value: 1.0 },
@@ -500,10 +521,13 @@ export class VibeScene3D {
 
     this.particleUniforms = {
       uTime: { value: 0 },
+      uBeatTime: { value: 0 },
       uSpeed: { value: 1.0 },
       uBass: { value: 0 },
       uMid: { value: 0 },
       uHigh: { value: 0 },
+      uBeat: { value: 0 },
+      uDownbeat: { value: 0 },
       uTurbulence: { value: 1.1 },
       uMode: { value: 2.0 },
       uIntensity: { value: 1.0 },
@@ -582,10 +606,15 @@ export class VibeScene3D {
     this._syncSkinTargets();
   }
 
-  updateAudio(bass, mid, high) {
+  updateAudio(bass, mid, high, beat = 0, downbeat = 0, beatPhase = 0) {
     this.audio.bass = THREE.MathUtils.lerp(this.audio.bass, bass, 0.25);
     this.audio.mid = THREE.MathUtils.lerp(this.audio.mid, mid, 0.2);
     this.audio.high = THREE.MathUtils.lerp(this.audio.high, high, 0.25);
+    const beatLerp = beat > this.audio.beat ? 0.78 : 0.35;
+    const downLerp = downbeat > this.audio.downbeat ? 0.78 : 0.28;
+    this.audio.beat = THREE.MathUtils.lerp(this.audio.beat, beat, beatLerp);
+    this.audio.downbeat = THREE.MathUtils.lerp(this.audio.downbeat, downbeat, downLerp);
+    this.audio.beatPhase = beatPhase;
   }
 
   _bindEvents() {
@@ -650,6 +679,7 @@ export class VibeScene3D {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const elapsed = this.clock.elapsedTime;
     this.shockTime += dt;
+    this.beatTime += dt * (1.0 + Math.min(1.6, this.audio.beat * 1.45));
 
     const speed = this.vibe.speed || 1.0;
     const turbulence = this.vibe.turbulence ?? 1.0;
@@ -657,6 +687,8 @@ export class VibeScene3D {
     this.mouse.lerp(this.targetMouse, 0.06);
     this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, this.mouse.x * 0.7, 0.05);
     this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, this.mouse.y * 0.45, 0.05);
+    const targetZ = 7.2 - this.audio.beat * 0.16 * Math.min(1.3, this.visualIntensity);
+    this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, targetZ, 0.18);
     this.camera.lookAt(0, 0, -2);
 
     this.bgUniforms.uColorBase.value.lerp(this.targetColors.base, 0.035);
@@ -674,14 +706,20 @@ export class VibeScene3D {
     this.bgUniforms.uBass.value = this.audio.bass;
     this.bgUniforms.uMid.value = this.audio.mid;
     this.bgUniforms.uHigh.value = this.audio.high;
+    this.bgUniforms.uBeat.value = this.audio.beat;
+    this.bgUniforms.uDownbeat.value = this.audio.downbeat;
+    this.bgUniforms.uBeatPhase.value = this.audio.beatPhase;
     this.bgUniforms.uSpeed.value = speed;
     this.bgUniforms.uTurbulence.value = turbulence;
 
     this.particleUniforms.uTime.value = elapsed;
+    this.particleUniforms.uBeatTime.value = this.beatTime;
     this.particleUniforms.uSpeed.value = speed;
     this.particleUniforms.uBass.value = this.audio.bass;
     this.particleUniforms.uMid.value = this.audio.mid;
     this.particleUniforms.uHigh.value = this.audio.high;
+    this.particleUniforms.uBeat.value = this.audio.beat;
+    this.particleUniforms.uDownbeat.value = this.audio.downbeat;
     this.particleUniforms.uTurbulence.value = turbulence;
 
     this.renderer.render(this.scene, this.camera);
