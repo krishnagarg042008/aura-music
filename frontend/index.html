@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Shippori+Mincho:wght@600;700&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&family=Zen+Kaku+Gothic+New:wght@700&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/styles.css?v=22" />
+  <link rel="stylesheet" href="/css/styles.css?v=23" />
 
   <script type="importmap">
     {
@@ -39,6 +39,35 @@
     <img id="ambient-cover-img" alt="" referrerpolicy="no-referrer" />
   </div>
   <div class="glass-vignette"></div>
+  <div id="anime-silhouette-layer" class="anime-silhouette-layer hidden" aria-hidden="true">
+    <!-- Top-right overhanging Sakura branch silhouette -->
+    <svg class="silhouette-branch" viewBox="0 0 360 240" fill="none">
+      <path d="M368 18 C308 30, 260 64, 212 92 C170 116, 128 112, 84 128 M244 74 C216 54, 190 46, 162 48 M282 54 C272 28, 254 14, 232 6 M182 104 C156 124, 136 144, 108 154" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/>
+      <g fill="currentColor">
+        <circle cx="84" cy="128" r="7"/><circle cx="96" cy="120" r="5"/><circle cx="72" cy="134" r="4"/>
+        <circle cx="160" cy="48" r="8"/><circle cx="174" cy="40" r="5"/><circle cx="146" cy="54" r="5"/>
+        <circle cx="232" cy="8" r="6"/><circle cx="246" cy="14" r="4"/>
+        <circle cx="108" cy="154" r="7"/><circle cx="122" cy="160" r="5"/><circle cx="96" cy="162" r="4"/>
+        <circle cx="210" cy="92" r="6"/><circle cx="225" cy="84" r="5"/><circle cx="198" cy="78" r="4"/>
+        <circle cx="288" cy="52" r="7"/><circle cx="304" cy="42" r="5"/>
+        <circle cx="328" cy="28" r="6"/><circle cx="344" cy="36" r="4"/>
+      </g>
+    </svg>
+    <!-- Bottom anime skyline & catenary utility wires silhouette -->
+    <svg class="silhouette-skyline" viewBox="0 0 1440 220" preserveAspectRatio="none" fill="none">
+      <path d="M0 198 L160 198 L160 162 L238 162 L238 188 L350 188 L350 146 L422 146 L422 195 L980 195 L980 168 L1060 168 L1060 186 L1220 186 L1220 142 L1312 142 L1312 190 L1440 190 L1440 220 L0 220 Z" fill="currentColor"/>
+      <g stroke="currentColor" stroke-linecap="round">
+        <line x1="1264" y1="36" x2="1264" y2="195" stroke-width="4.5"/>
+        <line x1="1240" y1="54" x2="1288" y2="54" stroke-width="3.5"/>
+        <line x1="1244" y1="74" x2="1284" y2="74" stroke-width="3"/>
+        <rect x="1256" y="84" width="16" height="22" rx="3" fill="currentColor" stroke="none"/>
+        <path d="M0 98 Q620 142 1244 54" stroke-width="1.6"/>
+        <path d="M0 112 Q640 160 1284 74" stroke-width="1.4"/>
+        <path d="M1288 54 Q1370 72 1440 62" stroke-width="1.6"/>
+        <path d="M1284 74 Q1365 92 1440 84" stroke-width="1.4"/>
+      </g>
+    </svg>
+  </div>
 
   <div id="app" class="app-shell" data-mobile-view="player">
     <aside class="sidebar glass-panel" id="sidebar-panel">
@@ -458,10 +487,21 @@
         <div class="fx-section-title">Ambient Vibes &amp; Visuals</div>
         <div class="fx-toggle-row">
           <span>UI Theme Skin</span>
-          <div class="crossfade-pills" id="theme-skin-pills">
+          <div class="crossfade-pills wrap-pills" id="theme-skin-pills">
             <button data-skin="default" class="skin-btn active">Default</button>
             <button data-skin="anime" class="skin-btn">Anime UI</button>
+            <button data-skin="pastel" class="skin-btn">Pastel Sky</button>
             <button data-skin="manga" class="skin-btn">Manga Ink</button>
+          </div>
+        </div>
+        <div class="fx-toggle-row">
+          <span>Anime Pastel Sky</span>
+          <div class="crossfade-pills wrap-pills" id="pastel-bg-pills">
+            <button data-pastel="off" class="pastel-btn active">Off</button>
+            <button data-pastel="daydream" class="pastel-btn">Daydream</button>
+            <button data-pastel="peach" class="pastel-btn">Peach</button>
+            <button data-pastel="ghibli" class="pastel-btn">Ghibli</button>
+            <button data-pastel="lavender" class="pastel-btn">Lavender</button>
           </div>
         </div>
         <div class="fx-toggle-row">
@@ -475,6 +515,10 @@
         <label class="fx-toggle-row">
           <span>Blurred Album Canvas</span>
           <input id="vis-backdrop-toggle" type="checkbox" checked />
+        </label>
+        <label class="fx-toggle-row">
+          <span>Anime Silhouettes</span>
+          <input id="vis-silhouette-toggle" type="checkbox" />
         </label>
         <label class="fx-toggle-row">
           <span>Mood Particles</span>
@@ -586,6 +630,6 @@
   <div id="yt-player-box" style="position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-999;"></div>
 
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script type="module" src="/js/app.js?v=22"></script>
+  <script type="module" src="/js/app.js?v=23"></script>
 </body>
 </html>

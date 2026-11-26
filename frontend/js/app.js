@@ -1,4 +1,4 @@
-import { VibeScene3D } from "./scene3d.js?v=21";
+import { VibeScene3D } from "./scene3d.js?v=23";
 import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js?v=17";
 import { buildShuffledQueue, detectExternalMusicUrl, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js?v=20";
 
@@ -143,7 +143,10 @@ const coverHaloCanvas = document.getElementById("cover-halo-canvas");
 const coverHaloCtx = coverHaloCanvas ? coverHaloCanvas.getContext("2d") : null;
 const visIntensityPills = document.getElementById("vis-intensity-pills");
 const themeSkinPills = document.getElementById("theme-skin-pills");
+const pastelBgPills = document.getElementById("pastel-bg-pills");
 const visBackdropToggle = document.getElementById("vis-backdrop-toggle");
+const visSilhouetteToggle = document.getElementById("vis-silhouette-toggle");
+const animeSilhouetteLayer = document.getElementById("anime-silhouette-layer");
 const visParticlesToggle = document.getElementById("vis-particles-toggle");
 const visHaloToggle = document.getElementById("vis-halo-toggle");
 
@@ -236,6 +239,8 @@ function loadPrefs() {
     autoRadio: true,
     visualIntensity: "balanced",
     themeSkin: "default",
+    pastelBg: "off",
+    animeSilhouette: null,
     albumBackdrop: true,
     particlesEnabled: true,
     spectrumHalo: true,
@@ -1309,7 +1314,14 @@ function syncAudioFxUI() {
   themeSkinPills?.querySelectorAll(".skin-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.skin === (prefs.themeSkin || "default"));
   });
+  pastelBgPills?.querySelectorAll(".pastel-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.pastel === (prefs.pastelBg || "off"));
+  });
   if (visBackdropToggle) visBackdropToggle.checked = prefs.albumBackdrop !== false;
+  if (visSilhouetteToggle) {
+    const autoSil = prefs.themeSkin === "anime" || prefs.themeSkin === "pastel" || (prefs.pastelBg && prefs.pastelBg !== "off");
+    visSilhouetteToggle.checked = prefs.animeSilhouette === null ? autoSil : Boolean(prefs.animeSilhouette);
+  }
   if (visParticlesToggle) visParticlesToggle.checked = prefs.particlesEnabled !== false;
   if (visHaloToggle) visHaloToggle.checked = prefs.spectrumHalo !== false;
   fxYtNotice?.classList.toggle("hidden", !isUsingYTPlayer);
@@ -1319,17 +1331,28 @@ function applyVisualPreferences() {
   const intensity = ["minimal", "balanced", "vivid"].includes(prefs.visualIntensity)
     ? prefs.visualIntensity
     : "balanced";
-  const skin = ["default", "anime", "manga"].includes(prefs.themeSkin)
+  const skin = ["default", "anime", "pastel", "manga"].includes(prefs.themeSkin)
     ? prefs.themeSkin
     : "default";
+  const pastelBg = ["off", "daydream", "peach", "ghibli", "lavender"].includes(prefs.pastelBg)
+    ? prefs.pastelBg
+    : "off";
+  const isBrightCanvas = skin !== "pastel" && ["daydream", "peach", "ghibli"].includes(pastelBg);
   const particlesEnabled = prefs.particlesEnabled !== false;
   const albumBackdrop = prefs.albumBackdrop !== false;
   const spectrumHalo = prefs.spectrumHalo !== false;
+  const autoSilhouette = skin === "anime" || skin === "pastel" || pastelBg !== "off";
+  const showSilhouette = prefs.animeSilhouette === null ? autoSilhouette : Boolean(prefs.animeSilhouette);
 
   document.body.setAttribute("data-visual-intensity", intensity);
   document.body.setAttribute("data-skin", skin);
-  scene3D.setVisualOptions({ intensity, particlesEnabled, skin });
+  document.body.setAttribute("data-pastel-bg", pastelBg);
+  document.body.setAttribute("data-bright-bg", String(isBrightCanvas));
+  scene3D.setVisualOptions({ intensity, particlesEnabled, skin, pastelBg });
 
+  if (animeSilhouetteLayer) {
+    animeSilhouetteLayer.classList.toggle("hidden", !showSilhouette);
+  }
   if (ambientCoverLayer) {
     ambientCoverLayer.classList.toggle("hidden", !albumBackdrop);
     ambientCoverLayer.classList.toggle("visible", albumBackdrop && Boolean(currentTrack));
@@ -1462,10 +1485,29 @@ visIntensityPills?.addEventListener("click", (e) => {
 themeSkinPills?.addEventListener("click", (e) => {
   const btn = e.target.closest(".skin-btn");
   if (!btn) return;
-  prefs.themeSkin = btn.dataset.skin || "default";
+  const nextSkin = btn.dataset.skin || "default";
+  prefs.themeSkin = nextSkin;
+  if (nextSkin === "pastel" && (!prefs.pastelBg || prefs.pastelBg === "off")) {
+    prefs.pastelBg = "daydream";
+  }
   savePrefs();
   applyVisualPreferences();
   syncAudioFxUI();
+});
+
+pastelBgPills?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pastel-btn");
+  if (!btn) return;
+  prefs.pastelBg = btn.dataset.pastel || "off";
+  savePrefs();
+  applyVisualPreferences();
+  syncAudioFxUI();
+});
+
+visSilhouetteToggle?.addEventListener("change", () => {
+  prefs.animeSilhouette = Boolean(visSilhouetteToggle.checked);
+  savePrefs();
+  applyVisualPreferences();
 });
 
 visBackdropToggle?.addEventListener("change", () => {

@@ -23,6 +23,9 @@ const BACKDROP_FRAG = `
   uniform float uIntensity;
   uniform float uAnimeRay;
   uniform float uMangaTone;
+  uniform float uPastelMode;
+  uniform float uPastelMix;
+  uniform float uLightGain;
   uniform vec3 uColorBase;
   uniform vec3 uColorA;
   uniform vec3 uColorB;
@@ -79,13 +82,68 @@ const BACKDROP_FRAG = `
     float auroraBand = exp(-abs(uv.y - ribbonWave) * 8.5) * (0.08 + uMid * 0.26) * inten;
     col += mix(uColorA, uColorB, uv.x) * auroraBand;
 
+    // Anime Pastel Sky Presets (1=Daydream Clouds, 2=Peach Dusk, 3=Ghibli Breeze, 4=Night Lavender)
+    if (uPastelMix > 0.01) {
+      float drift = uTime * 0.032 * max(0.35, uSpeed);
+      vec2 cloudUv = vec2(uv.x * 1.7 - drift, uv.y * 2.15 + q.y * 0.12);
+      float cloudBase = fbm(cloudUv + vec2(0.0, uMid * 0.06));
+      float cloudDetail = fbm(cloudUv * 2.3 + vec2(4.2, -drift * 1.4));
+      float cloudMask = smoothstep(0.42, 0.72, cloudBase * 0.72 + cloudDetail * 0.28 + (0.08 - uv.y * 0.18));
+      float cloudLight = smoothstep(0.46, 0.80, cloudDetail + uv.y * 0.14 + uMid * 0.08);
+      vec3 pastelSky = col;
+
+      if (uPastelMode < 1.5) {
+        // 1. Daydream: Cotton-candy baby blue sky -> periwinkle -> blush pink horizon + cel clouds
+        vec3 skyTop = vec3(0.54, 0.77, 0.99);
+        vec3 skyMid = vec3(0.76, 0.71, 0.98);
+        vec3 skyHorizon = vec3(0.99, 0.80, 0.90);
+        vec3 baseSky = mix(skyHorizon, mix(skyMid, skyTop, smoothstep(0.38, 0.95, uv.y)), smoothstep(0.0, 0.62, uv.y));
+        vec3 cloudShadow = vec3(0.79, 0.74, 0.96);
+        vec3 cloudHighlight = vec3(1.0, 0.96, 0.99);
+        vec3 celCloud = mix(cloudShadow, cloudHighlight, cloudLight);
+        pastelSky = mix(baseSky, celCloud, cloudMask * 0.85);
+      } else if (uPastelMode < 2.5) {
+        // 2. Peach Dusk: Powder blue -> soft lilac -> warm apricot horizon + jet contrails
+        vec3 zenith = vec3(0.55, 0.76, 0.98);
+        vec3 duskMid = vec3(0.84, 0.73, 0.96);
+        vec3 peachGlow = vec3(1.0, 0.83, 0.70);
+        vec3 coralRim = vec3(0.99, 0.68, 0.76);
+        vec3 sunset = mix(peachGlow, mix(coralRim, mix(duskMid, zenith, smoothstep(0.50, 0.98, uv.y)), smoothstep(0.24, 0.58, uv.y)), smoothstep(0.0, 0.34, uv.y));
+        vec3 warmCloud = mix(vec3(0.95, 0.74, 0.84), vec3(1.0, 0.93, 0.86), cloudLight);
+        pastelSky = mix(sunset, warmCloud, cloudMask * 0.68);
+        float contrail = exp(-abs((uv.y - 0.66) - uv.x * 0.22 + sin(uv.x * 3.0) * 0.015) * 75.0) * smoothstep(0.15, 0.85, uv.x);
+        float contrail2 = exp(-abs((uv.y - 0.72) - uv.x * 0.21) * 95.0) * smoothstep(0.25, 0.92, uv.x) * 0.65;
+        pastelSky += vec3(1.0, 0.95, 0.96) * (contrail + contrail2) * 0.42;
+      } else if (uPastelMode < 3.5) {
+        // 3. Ghibli Breeze: Warm cream sunlight -> powder cyan -> soft sage-mint meadow sky
+        vec3 sunTop = vec3(0.99, 0.96, 0.82);
+        vec3 airBlue = vec3(0.71, 0.90, 0.98);
+        vec3 mintHorizon = vec3(0.66, 0.94, 0.82);
+        vec3 meadowSky = mix(mintHorizon, mix(airBlue, sunTop, smoothstep(0.42, 0.96, uv.y + uv.x * 0.14)), smoothstep(0.04, 0.48, uv.y));
+        vec3 ghibliCloud = mix(vec3(0.76, 0.91, 0.95), vec3(1.0, 0.99, 0.94), cloudLight);
+        pastelSky = mix(meadowSky, ghibliCloud, cloudMask * 0.82);
+      } else {
+        // 4. Night Lavender: Cozy plum edges opening into luminous lilac, rose & ice-mint aura
+        vec3 deepPlum = vec3(0.15, 0.09, 0.25);
+        vec3 lilacMist = vec3(0.68, 0.52, 0.92);
+        vec3 roseVapor = vec3(0.93, 0.58, 0.79);
+        vec3 iceMint = vec3(0.55, 0.90, 0.95);
+        vec3 vapor = mix(deepPlum, lilacMist, smoothstep(0.18, 0.85, f));
+        vapor = mix(vapor, roseVapor, smoothstep(0.42, 0.92, cloudMask + uBass * 0.18));
+        vapor += iceMint * exp(-abs(uv.y - ribbonWave) * 6.5) * (0.16 + uMid * 0.26) * inten;
+        pastelSky = vapor;
+      }
+
+      col = mix(col, pastelSky, uPastelMix);
+    }
+
     // Subtle treble sparkle & edge bloom
     float shimmer = pow(noise(uv * 18.0 + vec2(t * 1.8, -t * 1.4)), 4.0) * uHigh * 0.22 * inten;
     col += uColorB * shimmer;
 
     // Soft cursor glow + radial bass breath
     float cursorGlow = exp(-length(vUv - (uMouse * 0.5 + 0.5)) * 4.0) * (0.12 + uBass * 0.2) * inten;
-    col += uColorB * cursorGlow;
+    col += mix(uColorB, vec3(1.0, 0.86, 0.94), uPastelMix * 0.6) * cursorGlow;
 
     // Anime Makoto Shinkai twilight diagonal sunbeams
     if (uAnimeRay > 0.01) {
@@ -103,7 +161,7 @@ const BACKDROP_FRAG = `
       col += vec3(0.88, 0.95, 1.0) * streak * smoothstep(0.26, 0.64, rad) * (0.04 + uBass * 0.14) * uMangaTone * inten;
     }
 
-    gl_FragColor = vec4(col * 0.72, 1.0);
+    gl_FragColor = vec4(clamp(col * uLightGain, 0.0, 1.0), 1.0);
   }
 `;
 
@@ -202,6 +260,7 @@ const PARTICLE_FRAG = `
   uniform vec3 uColorB;
   uniform float uMode;
   uniform float uTime;
+  uniform float uBrightMode;
   varying float vSeed;
   varying float vAlpha;
   varying float vHigh;
@@ -262,8 +321,12 @@ const PARTICLE_FRAG = `
     if (shape < 0.02) discard;
     vec3 col = mix(uColorB, uColorA, vSeed * 0.55);
     if (uMode > 7.5) {
-      vec3 sakuraTint = mix(vec3(1.0, 0.72, 0.86), vec3(1.0, 0.92, 0.97), vSeed);
-      col = mix(col, sakuraTint, 0.72);
+      vec3 darkSakura = mix(vec3(1.0, 0.72, 0.86), vec3(1.0, 0.92, 0.97), vSeed);
+      vec3 brightSakura = mix(vec3(0.95, 0.34, 0.62), vec3(1.0, 0.66, 0.84), vSeed);
+      col = mix(mix(col, darkSakura, 0.72), brightSakura, clamp(uBrightMode, 0.0, 1.0));
+    } else if (uBrightMode > 0.05) {
+      vec3 pastelAccent = mix(vec3(0.92, 0.42, 0.68), vec3(0.32, 0.64, 0.95), vSeed);
+      col = mix(col, pastelAccent, 0.65 * clamp(uBrightMode, 0.0, 1.0));
     }
     gl_FragColor = vec4(col, shape * clamp(vAlpha, 0.0, 0.82));
   }
@@ -285,6 +348,14 @@ const INTENSITY_MAP = {
   minimal: 0.38,
   balanced: 1.0,
   vivid: 1.5,
+};
+
+const PASTEL_MODE_INDEX = {
+  off: 0.0,
+  daydream: 1.0,
+  peach: 2.0,
+  ghibli: 3.0,
+  lavender: 4.0,
 };
 
 export class VibeScene3D {
@@ -330,8 +401,12 @@ export class VibeScene3D {
     this.visualIntensity = 1.0;
     this.particlesEnabled = true;
     this.themeSkin = "default";
+    this.pastelBg = "off";
     this.targetAnimeRay = 0.0;
     this.targetMangaTone = 0.0;
+    this.targetPastelMix = 0.0;
+    this.targetLightGain = 0.72;
+    this.targetBrightMode = 0.0;
     this.audio = { bass: 0, mid: 0, high: 0 };
 
     this._initBackdrop();
@@ -358,6 +433,9 @@ export class VibeScene3D {
       uIntensity: { value: 1.0 },
       uAnimeRay: { value: 0.0 },
       uMangaTone: { value: 0.0 },
+      uPastelMode: { value: 1.0 },
+      uPastelMix: { value: 0.0 },
+      uLightGain: { value: 0.72 },
       uColorBase: { value: this.targetColors.base.clone() },
       uColorA: { value: this.targetColors.a.clone() },
       uColorB: { value: this.targetColors.b.clone() },
@@ -406,6 +484,7 @@ export class VibeScene3D {
       uTurbulence: { value: 1.1 },
       uMode: { value: 2.0 },
       uIntensity: { value: 1.0 },
+      uBrightMode: { value: 0.0 },
       uPixelRatio: { value: this.pixelRatio },
       uColorA: this.bgUniforms.uColorA,
       uColorB: this.bgUniforms.uColorB,
@@ -441,14 +520,37 @@ export class VibeScene3D {
   }
 
   _syncSkinTargets() {
-    this.targetAnimeRay = (this.vibe?.id === "anime" || this.themeSkin === "anime") ? 1.0 : 0.0;
+    this.targetAnimeRay = (this.vibe?.id === "anime" || this.themeSkin === "anime" || this.themeSkin === "pastel") ? 1.0 : 0.0;
     this.targetMangaTone = this.themeSkin === "manga" ? 1.0 : 0.0;
+
+    const pIdx = PASTEL_MODE_INDEX[this.pastelBg] ?? 0.0;
+    if (pIdx > 0.5) {
+      this.bgUniforms.uPastelMode.value = pIdx;
+      this.targetPastelMix = 1.0;
+    } else {
+      this.targetPastelMix = 0.0;
+    }
+
+    const isPastelLightSkin = this.themeSkin === "pastel";
+    const isBrightPastelSky = this.pastelBg === "daydream" || this.pastelBg === "peach" || this.pastelBg === "ghibli";
+    const bright = isPastelLightSkin || isBrightPastelSky;
+    this.targetLightGain = isPastelLightSkin ? 0.98 : (isBrightPastelSky ? 0.86 : 0.72);
+    this.targetBrightMode = bright ? 1.0 : 0.0;
+
+    if (this.particleMat) {
+      const wantBlend = bright ? THREE.NormalBlending : THREE.AdditiveBlending;
+      if (this.particleMat.blending !== wantBlend) {
+        this.particleMat.blending = wantBlend;
+        this.particleMat.needsUpdate = true;
+      }
+    }
   }
 
-  setVisualOptions({ intensity = "balanced", particlesEnabled = true, skin = "default" } = {}) {
+  setVisualOptions({ intensity = "balanced", particlesEnabled = true, skin = "default", pastelBg = "off" } = {}) {
     this.visualIntensity = INTENSITY_MAP[intensity] ?? 1.0;
     this.particlesEnabled = Boolean(particlesEnabled);
     this.themeSkin = skin || "default";
+    this.pastelBg = pastelBg || "off";
     if (this.particles) {
       this.particles.visible = this.particlesEnabled;
     }
@@ -536,6 +638,9 @@ export class VibeScene3D {
     this.bgUniforms.uColorB.value.lerp(this.targetColors.b, 0.035);
     this.bgUniforms.uAnimeRay.value = THREE.MathUtils.lerp(this.bgUniforms.uAnimeRay.value, this.targetAnimeRay, 0.06);
     this.bgUniforms.uMangaTone.value = THREE.MathUtils.lerp(this.bgUniforms.uMangaTone.value, this.targetMangaTone, 0.06);
+    this.bgUniforms.uPastelMix.value = THREE.MathUtils.lerp(this.bgUniforms.uPastelMix.value, this.targetPastelMix, 0.06);
+    this.bgUniforms.uLightGain.value = THREE.MathUtils.lerp(this.bgUniforms.uLightGain.value, this.targetLightGain, 0.06);
+    this.particleUniforms.uBrightMode.value = THREE.MathUtils.lerp(this.particleUniforms.uBrightMode.value, this.targetBrightMode, 0.08);
 
     this.bgUniforms.uTime.value = elapsed;
     this.bgUniforms.uMouse.value.copy(this.mouse);

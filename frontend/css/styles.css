@@ -13,6 +13,8 @@
   --lyric-size: clamp(1.65rem, 2.7vw, 2.55rem);
   --lyric-tracking: -0.02em;
   --lyric-transform: none;
+  --lyric-fill: #ffffff;
+  --lyric-edge: rgba(255, 255, 255, 0.65);
   --lyric-dim: rgba(255, 255, 255, 0.24);
   --lyric-glow: 0 0 28px rgba(236, 72, 153, 0.65);
 }
@@ -1359,9 +1361,9 @@ input[type="range"]:hover::-webkit-slider-thumb {
   color: transparent;
   background-image: linear-gradient(
     90deg,
-    #ffffff 0%,
-    #ffffff var(--fill),
-    rgba(255,255,255,0.65) calc(var(--fill) + 2%),
+    var(--lyric-fill) 0%,
+    var(--lyric-fill) var(--fill),
+    var(--lyric-edge) calc(var(--fill) + 2%),
     var(--lyric-dim) calc(var(--fill) + 6%),
     var(--lyric-dim) 100%
   );
@@ -3271,7 +3273,8 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 .eq-preset-btn,
 .cf-btn,
 .vis-int-btn,
-.skin-btn {
+.skin-btn,
+.pastel-btn {
   padding: 6px 11px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -3286,7 +3289,8 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 .eq-preset-btn.active,
 .cf-btn.active,
 .vis-int-btn.active,
-.skin-btn.active {
+.skin-btn.active,
+.pastel-btn.active {
   background: #ffffff;
   color: #0a0b14;
   border-color: #ffffff;
@@ -3335,6 +3339,7 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   font-size: 0.82rem;
   font-weight: 600;
 }
@@ -3342,6 +3347,11 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 .crossfade-pills {
   display: flex;
   gap: 6px;
+}
+
+.wrap-pills {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .lrc-modal-card {
@@ -3639,6 +3649,369 @@ body[data-skin="manga"] .album-art {
 
 body[data-skin="manga"] .app-shell.cinema-mode .lyric-line.active {
   text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.9), var(--lyric-glow);
+}
+
+/* ================= ANIME SILHOUETTE OVERLAY ================= */
+.anime-silhouette-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  color: rgba(14, 10, 26, 0.85);
+  opacity: 0.14;
+  transition: opacity 0.6s ease, color 0.5s ease;
+}
+
+.anime-silhouette-layer.hidden {
+  display: none !important;
+}
+
+body[data-visual-intensity="minimal"] .anime-silhouette-layer {
+  opacity: 0.07;
+}
+
+body[data-visual-intensity="vivid"] .anime-silhouette-layer {
+  opacity: 0.2;
+}
+
+body[data-skin="pastel"] .anime-silhouette-layer {
+  color: #2e1d4a;
+  opacity: 0.13;
+}
+
+.app-shell.cinema-mode.cinema-idle ~ .anime-silhouette-layer,
+body:has(.app-shell.cinema-mode.cinema-idle) .anime-silhouette-layer {
+  opacity: 0.06;
+}
+
+.silhouette-branch {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  width: clamp(220px, 28vw, 390px);
+  height: auto;
+}
+
+.silhouette-skyline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: clamp(95px, 16vh, 175px);
+}
+
+/* ================= FROSTED DARK-GLASS OVER BRIGHT PASTEL SKY ================= */
+body[data-bright-bg="true"] .glass-vignette {
+  background: radial-gradient(circle at 55% 45%, rgba(12, 8, 24, 0.24) 0%, rgba(8, 6, 18, 0.56) 100%);
+}
+
+body[data-bright-bg="true"] .glass-panel {
+  --glass-bg: rgba(20, 14, 34, 0.62);
+  background-color: rgba(20, 14, 34, 0.62);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+body[data-bright-bg="true"] .glass-pill {
+  background: rgba(20, 14, 34, 0.72);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+body[data-bright-bg="true"] .lyric-line,
+body[data-bright-bg="true"] .track-meta h1,
+body[data-bright-bg="true"] .track-meta p {
+  filter: drop-shadow(0 2px 12px rgba(14, 8, 28, 0.62));
+}
+
+body[data-bright-bg="true"] .ambient-cover-layer.visible {
+  opacity: 0.18;
+}
+
+/* ================= TRUE LIGHT-MODE PASTEL SKY SKIN ================= */
+body[data-skin="pastel"] {
+  --text-main: #231638;
+  --text-muted: rgba(35, 22, 56, 0.66);
+  --glass-bg: rgba(255, 249, 255, 0.60);
+  --glass-border: rgba(255, 255, 255, 0.84);
+  --lyric-fill: #231638;
+  --lyric-edge: rgba(35, 22, 56, 0.68);
+  --lyric-dim: rgba(35, 22, 56, 0.26);
+  --lyric-glow: 0 0 22px rgba(244, 114, 182, 0.44), 0 0 40px rgba(56, 189, 248, 0.30);
+}
+
+body[data-skin="pastel"] .glass-vignette {
+  opacity: 0.08;
+}
+
+body[data-skin="pastel"] .ambient-cover-layer {
+  mix-blend-mode: soft-light;
+}
+
+body[data-skin="pastel"][data-has-track="true"] .ambient-cover-layer.visible {
+  opacity: 0.16;
+}
+
+body[data-skin="pastel"] .glass-panel {
+  background: var(--glass-bg);
+  background-image:
+    radial-gradient(rgba(244, 114, 182, 0.10) 1px, transparent 1px),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.55), rgba(244, 226, 255, 0.28));
+  background-size: 16px 16px, 100% 100%;
+  border-color: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 20px 54px rgba(72, 42, 110, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+body[data-skin="pastel"] .glass-pill {
+  background: rgba(255, 250, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.88);
+  color: #231638;
+  box-shadow: 0 6px 20px rgba(82, 50, 120, 0.10);
+}
+
+body[data-skin="pastel"] .glass-pill:hover,
+body[data-skin="pastel"] .vibe-trigger:hover,
+body[data-skin="pastel"] .vibe-trigger.open,
+body[data-skin="pastel"] .sync-trigger:hover,
+body[data-skin="pastel"] .sync-trigger.open {
+  background: rgba(255, 255, 255, 0.90);
+}
+
+body[data-skin="pastel"] .brand span::after {
+  content: "PASTEL";
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  vertical-align: middle;
+  background: linear-gradient(135deg, #f472b6, #93c5fd);
+  color: #231638;
+}
+
+body[data-skin="pastel"] .nav-tabs {
+  background: rgba(35, 22, 56, 0.07);
+}
+
+body[data-skin="pastel"] .nav-tab:hover,
+body[data-skin="pastel"] .icon-btn:hover {
+  color: #231638;
+}
+
+body[data-skin="pastel"] .nav-tab.active,
+body[data-skin="pastel"] .vibe-pills button.active {
+  background: linear-gradient(135deg, #f472b6, #818cf8);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 4px 14px rgba(244, 114, 182, 0.34);
+}
+
+body[data-skin="pastel"] .vibe-pills button {
+  background: rgba(35, 22, 56, 0.06);
+  border-color: rgba(35, 22, 56, 0.09);
+  color: rgba(35, 22, 56, 0.72);
+}
+
+body[data-skin="pastel"] .vibe-pills button:hover {
+  color: #231638;
+  background: rgba(35, 22, 56, 0.12);
+}
+
+body[data-skin="pastel"] .search-box,
+body[data-skin="pastel"] .import-box input,
+body[data-skin="pastel"] .dialog-input,
+body[data-skin="pastel"] .lrc-textarea,
+body[data-skin="pastel"] .modal-create-row input {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(35, 22, 56, 0.14);
+  color: #231638;
+}
+
+body[data-skin="pastel"] .search-box input,
+body[data-skin="pastel"] .modal-pl-row,
+body[data-skin="pastel"] .playlist-card-title,
+body[data-skin="pastel"] .track-item-title,
+body[data-skin="pastel"] .track-meta h1,
+body[data-skin="pastel"] .ctrl-btn,
+body[data-skin="pastel"] .mini-round-btn,
+body[data-skin="pastel"] .lyrics-tool-pill,
+body[data-skin="pastel"] .cinema-hud-pill,
+body[data-skin="pastel"] .action-pill,
+body[data-skin="pastel"] .offset-badge,
+body[data-skin="pastel"] .eq-band-row em,
+body[data-skin="pastel"] .queue-header-title,
+body[data-skin="pastel"] .queue-current-title,
+body[data-skin="pastel"] .queue-item-title,
+body[data-skin="pastel"] .import-single-title,
+body[data-skin="pastel"] .mini-title,
+body[data-skin="pastel"] .modal-header h3 {
+  color: #231638;
+}
+
+body[data-skin="pastel"] .search-box input::placeholder,
+body[data-skin="pastel"] .import-box input::placeholder,
+body[data-skin="pastel"] .dialog-input::placeholder,
+body[data-skin="pastel"] .lrc-textarea::placeholder,
+body[data-skin="pastel"] .modal-create-row input::placeholder {
+  color: rgba(35, 22, 56, 0.45);
+}
+
+body[data-skin="pastel"] .track-item:hover,
+body[data-skin="pastel"] .playlist-card:hover,
+body[data-skin="pastel"] .modal-pl-row:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+body[data-skin="pastel"] .track-item.active {
+  background: linear-gradient(90deg, rgba(244, 114, 182, 0.22), rgba(147, 197, 253, 0.24));
+  border-left: 3px solid #ec4899;
+}
+
+body[data-skin="pastel"] .playlist-card,
+body[data-skin="pastel"] .modal-pl-row,
+body[data-skin="pastel"] .external-import-banner,
+body[data-skin="pastel"] .import-single-card,
+body[data-skin="pastel"] .queue-current-card,
+body[data-skin="pastel"] .queue-item {
+  background: rgba(255, 255, 255, 0.48);
+  border-color: rgba(255, 255, 255, 0.78);
+}
+
+body[data-skin="pastel"] .art-container {
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 24px 56px rgba(96, 62, 138, 0.18), 0 0 42px rgba(244, 114, 182, 0.22);
+}
+
+body[data-skin="pastel"] .play-main {
+  background: linear-gradient(135deg, #231638, #4c2e78);
+  color: #ffffff;
+  box-shadow: 0 10px 26px rgba(48, 28, 78, 0.26);
+}
+
+body[data-skin="pastel"] .play-main:hover {
+  background: linear-gradient(135deg, #2f1d4b, #5a388c);
+}
+
+body[data-skin="pastel"] input[type="range"] {
+  background: rgba(35, 22, 56, 0.16);
+}
+
+body[data-skin="pastel"] input[type="range"]::-webkit-slider-thumb {
+  background: #231638;
+  box-shadow: 0 0 10px rgba(244, 114, 182, 0.55);
+}
+
+body[data-skin="pastel"] .sync-badge,
+body[data-skin="pastel"] .offset-badge,
+body[data-skin="pastel"] .sync-reset-btn,
+body[data-skin="pastel"] .sync-tuner-row button.sync-step-btn,
+body[data-skin="pastel"] .backup-btn,
+body[data-skin="pastel"] .pl-action-btn.secondary,
+body[data-skin="pastel"] .ext-banner-btn {
+  background: rgba(35, 22, 56, 0.08);
+  border-color: rgba(35, 22, 56, 0.12);
+  color: #231638;
+}
+
+body[data-skin="pastel"] .offset-badge.offset-active {
+  color: #0284c7;
+  background: rgba(56, 189, 248, 0.22);
+}
+
+body[data-skin="pastel"] .sync-badge {
+  color: #7c3aed;
+}
+
+body[data-skin="pastel"] .eq-preset-btn,
+body[data-skin="pastel"] .cf-btn,
+body[data-skin="pastel"] .vis-int-btn,
+body[data-skin="pastel"] .skin-btn,
+body[data-skin="pastel"] .pastel-btn {
+  background: rgba(35, 22, 56, 0.07);
+  border-color: rgba(35, 22, 56, 0.12);
+  color: rgba(35, 22, 56, 0.72);
+}
+
+body[data-skin="pastel"] .eq-preset-btn.active,
+body[data-skin="pastel"] .cf-btn.active,
+body[data-skin="pastel"] .vis-int-btn.active,
+body[data-skin="pastel"] .skin-btn.active,
+body[data-skin="pastel"] .pastel-btn.active {
+  background: #231638;
+  border-color: #231638;
+  color: #ffffff;
+}
+
+body[data-skin="pastel"] .lyric-subline {
+  color: rgba(35, 22, 56, 0.62);
+}
+
+body[data-skin="pastel"] .lyrics-tool-pill.active {
+  color: #7c3aed;
+  border-color: #ec4899;
+}
+
+body[data-skin="pastel"] .lyrics-container.selection-mode .lyric-line .lyric-word {
+  color: #231638;
+}
+
+body[data-skin="pastel"] .dialog-btn.secondary,
+body[data-skin="pastel"] .card-bar-cancel {
+  background: rgba(35, 22, 56, 0.09);
+  color: #231638;
+}
+
+body[data-skin="pastel"] .dialog-btn.primary,
+body[data-skin="pastel"] .card-bar-action,
+body[data-skin="pastel"] .modal-create-row button,
+body[data-skin="pastel"] .import-box button {
+  background: #231638;
+  color: #ffffff;
+}
+
+body[data-skin="pastel"] .header-popover {
+  background: rgba(255, 249, 255, 0.88);
+  border-color: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 22px 52px rgba(72, 42, 110, 0.22);
+}
+
+body[data-skin="pastel"] .context-menu,
+body[data-skin="pastel"] .queue-drawer,
+body[data-skin="pastel"] .mobile-mini-player,
+body[data-skin="pastel"] .mobile-nav {
+  background: rgba(255, 249, 255, 0.88);
+  border-color: rgba(255, 255, 255, 0.92);
+  color: #231638;
+  box-shadow: 0 20px 52px rgba(72, 42, 110, 0.20);
+}
+
+body[data-skin="pastel"] .context-menu-item {
+  color: #231638;
+}
+
+body[data-skin="pastel"] .context-menu-item:hover {
+  background: rgba(244, 114, 182, 0.16);
+  color: #231638;
+}
+
+body[data-skin="pastel"] .toast {
+  background: rgba(35, 22, 56, 0.90);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+body[data-skin="pastel"] .app-shell.cinema-mode .stage {
+  background: rgba(255, 249, 255, 0.42);
+  box-shadow: 0 26px 76px rgba(72, 42, 110, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+body[data-skin="pastel"] .app-shell.cinema-mode .track-meta p {
+  color: rgba(35, 22, 56, 0.72);
+}
+
+body[data-skin="pastel"] .app-shell.cinema-mode .lyric-line.active {
+  text-shadow: 0 0 24px rgba(244, 114, 182, 0.35);
 }
 
 @media (max-width: 960px) {
