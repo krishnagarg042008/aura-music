@@ -1,10 +1,11 @@
-const CACHE_NAME = "aura-music-shell-v11";
+const CACHE_NAME = "aura-music-shell-v12";
 const SHELL_ASSETS = [
   "/",
   "/manifest.json",
   "/icons/aura-icon.svg",
   "/css/styles.css",
   "/js/app.js",
+  "/js/audio-fx.js",
   "/js/beat-engine.js",
   "/js/scene3d.js",
   "/js/lyrics.js",

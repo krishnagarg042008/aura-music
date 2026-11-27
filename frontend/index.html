@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&family=Shippori+Mincho:wght@600;700&family=Space+Grotesk:wght@500;700&family=Syne:wght@700;800&family=Zen+Kaku+Gothic+New:wght@700&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/styles.css?v=25" />
+  <link rel="stylesheet" href="/css/styles.css?v=26" />
 
   <script type="importmap">
     {
@@ -429,12 +429,12 @@
       <div class="modal-header">
         <div>
           <h3 id="audio-fx-title">Spatial Audio &amp; Visuals</h3>
-          <p class="modal-sub">5-Band Equalizer, Crossfade &amp; Ambient Engine</p>
+          <p class="modal-sub">Sound Modes, Equalizer, Crossfade &amp; Ambient Engine</p>
         </div>
         <button id="audio-fx-close-btn" class="icon-btn" aria-label="Close Audio FX">&times;</button>
       </div>
 
-      <p id="fx-yt-notice" class="fx-yt-notice hidden">Playing via YouTube Embed fallback — EQ &amp; Crossfade apply on direct audio streams.</p>
+      <p id="fx-yt-notice" class="fx-yt-notice hidden">Playing via YouTube Embed fallback — EQ, Reverb, Lo-Fi &amp; Crossfade apply on direct streams; speed snaps to closest YouTube rate.</p>
 
       <div class="eq-presets" id="eq-presets">
         <button data-preset="flat" class="eq-preset-btn active">Flat</button>
@@ -485,6 +485,50 @@
             <button data-cf="4" class="cf-btn">4s</button>
           </div>
         </div>
+      </div>
+
+      <div class="fx-toggles">
+        <div class="fx-section-title">Sound Modes &amp; Audio Effects</div>
+        <div class="eq-presets" id="sound-mode-pills">
+          <button type="button" data-sound-mode="normal" class="sound-mode-btn active">Normal</button>
+          <button type="button" data-sound-mode="slowed" class="sound-mode-btn">Slowed + Reverb</button>
+          <button type="button" data-sound-mode="lofi" class="sound-mode-btn">Lo-Fi</button>
+          <button type="button" data-sound-mode="vaporwave" class="sound-mode-btn">Vaporwave</button>
+          <button type="button" data-sound-mode="nightcore" class="sound-mode-btn">Sped Up</button>
+          <button type="button" data-sound-mode="8d" class="sound-mode-btn">8D Audio</button>
+          <button type="button" data-sound-mode="underwater" class="sound-mode-btn">Underwater</button>
+        </div>
+
+        <div class="eq-bands fx-dsp-sliders">
+          <label class="eq-band-row">
+            <span>Speed</span>
+            <input id="fx-speed-slider" type="range" min="0.65" max="1.35" step="0.01" value="1" />
+            <em id="fx-speed-val">1.00&times;</em>
+          </label>
+          <label class="eq-band-row">
+            <span>Reverb</span>
+            <input id="fx-reverb-slider" type="range" min="0" max="100" step="1" value="0" />
+            <em id="fx-reverb-val">0%</em>
+          </label>
+          <label class="eq-band-row">
+            <span>Warmth</span>
+            <input id="fx-warmth-slider" type="range" min="0" max="100" step="1" value="0" />
+            <em id="fx-warmth-val">0%</em>
+          </label>
+        </div>
+
+        <label class="fx-toggle-row">
+          <span>Pitch-Lock (Keep Key)</span>
+          <input id="fx-pitchlock-toggle" type="checkbox" />
+        </label>
+        <label class="fx-toggle-row">
+          <span>Vinyl Crackle</span>
+          <input id="fx-crackle-toggle" type="checkbox" />
+        </label>
+        <label class="fx-toggle-row">
+          <span>8D Spatial Orbit</span>
+          <input id="fx-8d-toggle" type="checkbox" />
+        </label>
       </div>
 
       <div class="fx-toggles">
@@ -660,6 +704,6 @@
   <div id="yt-player-box" style="position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-999;"></div>
 
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script type="module" src="/js/app.js?v=25"></script>
+  <script type="module" src="/js/app.js?v=26"></script>
 </body>
 </html>

@@ -1,5 +1,14 @@
 import { VibeScene3D } from "./scene3d.js?v=25";
-import { BeatEngine } from "./beat-engine.js?v=1";
+import { BeatEngine } from "./beat-engine.js?v=2";
+import {
+  DEFAULT_SOUND_FX,
+  SOUND_MODE_PRESETS,
+  applyDeckSpeedAndPitch,
+  createAudioFxRack,
+  detectSoundPresetMatch,
+  mapYoutubeRate,
+  normalizeSoundFx,
+} from "./audio-fx.js?v=1";
 import { LyricsEngine, renderLyricCardBlob } from "./lyrics.js?v=17";
 import { buildShuffledQueue, detectExternalMusicUrl, isLocalOrLanHostname, parseClientLrc } from "./lrc-utils.js?v=20";
 
@@ -138,6 +147,16 @@ const eqPresetsEl = document.getElementById("eq-presets");
 const eqBandSliders = Array.from(document.querySelectorAll("#eq-bands input[type='range']"));
 const eqNormalizeToggle = document.getElementById("eq-normalize-toggle");
 const crossfadePills = document.getElementById("crossfade-pills");
+const soundModePills = document.getElementById("sound-mode-pills");
+const fxSpeedSlider = document.getElementById("fx-speed-slider");
+const fxSpeedVal = document.getElementById("fx-speed-val");
+const fxReverbSlider = document.getElementById("fx-reverb-slider");
+const fxReverbVal = document.getElementById("fx-reverb-val");
+const fxWarmthSlider = document.getElementById("fx-warmth-slider");
+const fxWarmthVal = document.getElementById("fx-warmth-val");
+const fxPitchLockToggle = document.getElementById("fx-pitchlock-toggle");
+const fxCrackleToggle = document.getElementById("fx-crackle-toggle");
+const fx8dToggle = document.getElementById("fx-8d-toggle");
 
 const ambientCoverLayer = document.getElementById("ambient-cover-layer");
 const ambientCoverImg = document.getElementById("ambient-cover-img");
@@ -257,11 +276,16 @@ function loadPrefs() {
     spectrumHalo: true,
     beatSync: true,
     beatIntensity: "balanced",
+    soundFx: { ...DEFAULT_SOUND_FX },
   };
   try {
     const parsed = JSON.parse(localStorage.getItem(PREFS_KEY) || "null");
     if (parsed && typeof parsed === "object") {
-      return { ...defaults, ...parsed };
+      return {
+        ...defaults,
+        ...parsed,
+        soundFx: normalizeSoundFx(parsed.soundFx),
+      };
     }
   } catch {}
   return defaults;
@@ -283,6 +307,7 @@ let analyser = null;
 let freqData = null;
 let masterGain = null;
 let compressorNode = null;
+let audioFxRack = null;
 let eqFilters = [];
 const deckNodes = new Map();
 let isCrossfading = false;
@@ -522,6 +547,14 @@ function initYouTubePlayer() {
         onStateChange: (event) => {
           if (!isUsingYTPlayer) return;
           if (event.data === YT.PlayerState.PLAYING) {
+            try {
+              if (typeof ytPlayer.setPlaybackRate === "function") {
+                const avail = typeof ytPlayer.getAvailablePlaybackRates === "function"
+                  ? ytPlayer.getAvailablePlaybackRates()
+                  : undefined;
+                ytPlayer.setPlaybackRate(mapYoutubeRate(prefs.soundFx?.speed, avail));
+              }
+            } catch {}
             setPlayingVisualState(true);
             if (syncBadge.textContent === "SYNCING..." || syncBadge.textContent === "STREAM ERROR") {
               syncBadge.textContent = "PLAYING";
@@ -608,6 +641,7 @@ function setPlayingVisualState(isPlaying) {
   miniPauseIcon?.classList.toggle("hidden", !isPlaying);
   artContainer.classList.toggle("playing", isPlaying);
   document.body.setAttribute("data-playing", String(Boolean(isPlaying)));
+  audioFxRack?.setPlaying(Boolean(isPlaying && !isUsingYTPlayer));
   updateMediaSessionState(isPlaying);
   renderQueue();
 }
@@ -1317,7 +1351,32 @@ function highlightPlayingRows() {
   });
 }
 
-// ================= WEB AUDIO: 5-BAND EQ, COMPRESSOR & CROSSFADE =================
+function getActivePlaybackRate() {
+  const fx = normalizeSoundFx(prefs.soundFx);
+  if (isUsingYTPlayer) return mapYoutubeRate(fx.speed);
+  return fx.speed;
+}
+
+function applySoundFxSettings() {
+  const fx = normalizeSoundFx(prefs.soundFx);
+  prefs.soundFx = fx;
+  [audioA, audioB].forEach((deck) => applyDeckSpeedAndPitch(deck, fx.speed, fx.pitchLock));
+
+  if (isUsingYTPlayer && ytPlayer && typeof ytPlayer.setPlaybackRate === "function") {
+    try {
+      const avail = typeof ytPlayer.getAvailablePlaybackRates === "function"
+        ? ytPlayer.getAvailablePlaybackRates()
+        : undefined;
+      ytPlayer.setPlaybackRate(mapYoutubeRate(fx.speed, avail));
+    } catch {}
+  }
+
+  const isDirectPlaying = !isUsingYTPlayer && Boolean(activeDeck && !activeDeck.paused && !activeDeck.ended);
+  audioFxRack?.applySettings(fx, isDirectPlaying);
+  updateMediaSessionPosition(true);
+}
+
+// ================= WEB AUDIO: 5-BAND EQ, SOUND MODES, COMPRESSOR & CROSSFADE =================
 function applyAudioFxSettings() {
   eqFilters.forEach((filter, idx) => {
     filter.gain.value = Number(prefs.eqBands?.[idx] ?? 0);
@@ -1339,6 +1398,8 @@ function applyAudioFxSettings() {
   if (masterGain) {
     masterGain.gain.value = parseFloat(volumeBar.value);
   }
+
+  applySoundFxSettings();
 }
 
 function syncAudioFxUI() {
@@ -1357,6 +1418,21 @@ function syncAudioFxUI() {
   crossfadePills?.querySelectorAll(".cf-btn").forEach((btn) => {
     btn.classList.toggle("active", Number(btn.dataset.cf) === Number(prefs.crossfadeSec || 0));
   });
+
+  const fx = normalizeSoundFx(prefs.soundFx);
+  const matchedPreset = detectSoundPresetMatch(fx);
+  soundModePills?.querySelectorAll(".sound-mode-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.soundMode === matchedPreset);
+  });
+  if (fxSpeedSlider) fxSpeedSlider.value = fx.speed.toFixed(2);
+  if (fxSpeedVal) fxSpeedVal.textContent = `${fx.speed.toFixed(2)}×`;
+  if (fxReverbSlider) fxReverbSlider.value = String(Math.round(fx.reverb * 100));
+  if (fxReverbVal) fxReverbVal.textContent = `${Math.round(fx.reverb * 100)}%`;
+  if (fxWarmthSlider) fxWarmthSlider.value = String(Math.round(fx.warmth * 100));
+  if (fxWarmthVal) fxWarmthVal.textContent = `${Math.round(fx.warmth * 100)}%`;
+  if (fxPitchLockToggle) fxPitchLockToggle.checked = Boolean(fx.pitchLock);
+  if (fxCrackleToggle) fxCrackleToggle.checked = Boolean(fx.crackle);
+  if (fx8dToggle) fx8dToggle.checked = Boolean(fx.spatial8D);
   visIntensityPills?.querySelectorAll(".vis-int-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.intensity === (prefs.visualIntensity || "balanced"));
   });
@@ -1452,7 +1528,7 @@ function initWebAudio() {
     for (let i = 0; i < eqFilters.length - 1; i++) {
       eqFilters[i].connect(eqFilters[i + 1]);
     }
-    eqFilters[eqFilters.length - 1].connect(compressorNode);
+    audioFxRack = createAudioFxRack(audioCtx, eqFilters[eqFilters.length - 1], compressorNode);
     compressorNode.connect(analyser);
     analyser.connect(masterGain);
     masterGain.connect(audioCtx.destination);
@@ -1536,6 +1612,56 @@ crossfadePills?.addEventListener("click", (e) => {
   syncAudioFxUI();
 });
 
+function updateSoundFx(patch) {
+  const merged = normalizeSoundFx({ ...prefs.soundFx, ...patch });
+  merged.preset = detectSoundPresetMatch(merged);
+  prefs.soundFx = merged;
+  savePrefs();
+  applySoundFxSettings();
+  syncAudioFxUI();
+}
+
+soundModePills?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".sound-mode-btn");
+  if (!btn) return;
+  const preset = SOUND_MODE_PRESETS[btn.dataset.soundMode];
+  if (!preset) return;
+  const keepPitchLock = Boolean(prefs.soundFx?.pitchLock);
+  prefs.soundFx = normalizeSoundFx({
+    ...preset,
+    preset: preset.id,
+    pitchLock: preset.id === "normal" ? keepPitchLock : preset.pitchLock,
+  });
+  savePrefs();
+  applySoundFxSettings();
+  syncAudioFxUI();
+  showToast(`Sound mode: ${preset.label}`);
+});
+
+fxSpeedSlider?.addEventListener("input", () => {
+  updateSoundFx({ speed: parseFloat(fxSpeedSlider.value) });
+});
+
+fxReverbSlider?.addEventListener("input", () => {
+  updateSoundFx({ reverb: (parseFloat(fxReverbSlider.value) || 0) / 100 });
+});
+
+fxWarmthSlider?.addEventListener("input", () => {
+  updateSoundFx({ warmth: (parseFloat(fxWarmthSlider.value) || 0) / 100 });
+});
+
+fxPitchLockToggle?.addEventListener("change", () => {
+  updateSoundFx({ pitchLock: Boolean(fxPitchLockToggle.checked) });
+});
+
+fxCrackleToggle?.addEventListener("change", () => {
+  updateSoundFx({ crackle: Boolean(fxCrackleToggle.checked) });
+});
+
+fx8dToggle?.addEventListener("change", () => {
+  updateSoundFx({ spatial8D: Boolean(fx8dToggle.checked) });
+});
+
 visIntensityPills?.addEventListener("click", (e) => {
   const btn = e.target.closest(".vis-int-btn");
   if (!btn) return;
@@ -1604,6 +1730,7 @@ function handleTapTempo(showFeedbackToast = false) {
     vibeId: currentVibeId,
     enabled: prefs.beatSync !== false,
     intensity: prefs.beatIntensity || "balanced",
+    playbackRate: getActivePlaybackRate(),
   });
   lastBeatState = snapState;
   updateBeatTempoUI(snapState, isPlaying, true);
@@ -1641,6 +1768,7 @@ beatAutoBtn?.addEventListener("click", () => {
     vibeId: currentVibeId,
     enabled: prefs.beatSync !== false,
     intensity: prefs.beatIntensity || "balanced",
+    playbackRate: getActivePlaybackRate(),
   });
   lastBeatState = snapState;
   updateBeatTempoUI(snapState, isPlaying, true);
@@ -1703,7 +1831,7 @@ function updateMediaSessionPosition(force = false) {
   try {
     navigator.mediaSession.setPositionState({
       duration: dur,
-      playbackRate: 1.0,
+      playbackRate: getActivePlaybackRate(),
       position: Math.min(pos, dur),
     });
   } catch {}
@@ -1931,6 +2059,7 @@ async function playTrack(idx) {
   } else {
     activeDeck.src = `/api/stream/${encodeURIComponent(track.videoId)}`;
     if (!audioCtx) activeDeck.volume = parseFloat(volumeBar.value);
+    applySoundFxSettings();
     activeDeck.play().catch((err) => {
       console.warn("HTML5 audio stream blocked or failed. Switching to YouTube player...", err);
       playViaYouTubeEmbed(track.videoId);
@@ -1954,6 +2083,7 @@ function triggerCrossfade(nextIdx) {
 
   incomingDeck.src = `/api/stream/${encodeURIComponent(nextTrack.videoId)}`;
   incomingDeck.currentTime = 0;
+  applyDeckSpeedAndPitch(incomingDeck, prefs.soundFx?.speed, prefs.soundFx?.pitchLock);
 
   incomingDeck.play().then(() => {
     if (outgoingNode && incomingNode && audioCtx) {
@@ -2695,8 +2825,15 @@ nextBtn.addEventListener("click", () => {
 });
 
 [audioA, audioB].forEach((deck) => {
+  deck.addEventListener("loadedmetadata", () => {
+    const fx = normalizeSoundFx(prefs.soundFx);
+    applyDeckSpeedAndPitch(deck, fx.speed, fx.pitchLock);
+  });
+
   deck.addEventListener("play", () => {
     if (deck !== activeDeck || isUsingYTPlayer) return;
+    const fx = normalizeSoundFx(prefs.soundFx);
+    applyDeckSpeedAndPitch(deck, fx.speed, fx.pitchLock);
     setPlayingVisualState(true);
     onPlaybackStateChanged(true);
   });
@@ -3111,7 +3248,8 @@ function mainLoop(now) {
     Number.isFinite(activeDeck.duration) &&
     activeDeck.duration > prefs.crossfadeSec + 3
   ) {
-    const remaining = activeDeck.duration - activeDeck.currentTime;
+    const rate = Math.max(0.5, Number(activeDeck.playbackRate) || 1.0);
+    const remaining = (activeDeck.duration - activeDeck.currentTime) / rate;
     if (remaining > 0 && remaining <= prefs.crossfadeSec) {
       const nextIdx = getNextTrackIndex();
       if (nextIdx !== null && nextIdx !== currentIndex) {
@@ -3121,6 +3259,7 @@ function mainLoop(now) {
   }
 
   const hasAnalyser = !isUsingYTPlayer && Boolean(analyser && freqData && freqData.length >= 16);
+  const currentRate = getActivePlaybackRate();
 
   if (isPlaying) {
     let bNorm = 0;
@@ -3155,6 +3294,7 @@ function mainLoop(now) {
       vibeId: currentVibeId,
       enabled: prefs.beatSync !== false,
       intensity: prefs.beatIntensity || "balanced",
+      playbackRate: currentRate,
     });
     lastBeatState = beatState;
 
@@ -3193,6 +3333,7 @@ function mainLoop(now) {
       vibeId: currentVibeId,
       enabled: prefs.beatSync !== false,
       intensity: prefs.beatIntensity || "balanced",
+      playbackRate: currentRate,
     });
     lastBeatState = beatState;
 

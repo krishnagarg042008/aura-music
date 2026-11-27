@@ -128,9 +128,11 @@ export class BeatEngine {
       vibeId = "synth",
       enabled = true,
       intensity = "balanced",
+      playbackRate = 1.0,
     } = options;
 
-    let effectiveBpm = VIBE_DEFAULT_BPM[vibeId] || 118;
+    const rateScale = clamp(Number(playbackRate) || 1.0, 0.5, 1.8);
+    let effectiveBpm = (VIBE_DEFAULT_BPM[vibeId] || 118) * rateScale;
     let bpmSource = hasLiveFFT ? "detecting" : "est";
     if (this.tapBpm > 0) {
       effectiveBpm = this.tapBpm;
@@ -340,8 +342,10 @@ export class BeatEngine {
       vibeId = "synth",
       enabled = true,
       intensity = "balanced",
+      playbackRate = 1.0,
     } = options;
 
+    const rateScale = clamp(Number(playbackRate) || 1.0, 0.5, 1.8);
     const dtSec = this.lastFrameMs === null ? 0.016 : clamp((nowMs - this.lastFrameMs) / 1000, 0, 0.05);
     this.lastFrameMs = nowMs;
 
@@ -354,7 +358,7 @@ export class BeatEngine {
 
       const idleBpm = this.tapBpm > 0
         ? this.tapBpm
-        : (this.liveBpm > 0 && this.bpmConfidence >= 0.35 ? this.liveBpm : (VIBE_DEFAULT_BPM[vibeId] || 118));
+        : (this.liveBpm > 0 && this.bpmConfidence >= 0.35 ? this.liveBpm : (VIBE_DEFAULT_BPM[vibeId] || 118) * rateScale);
 
       return {
         enabled: Boolean(enabled),
@@ -381,7 +385,7 @@ export class BeatEngine {
       fftAnalysis = this._analyzeSpectrum(freqData, nowMs);
     }
 
-    let effectiveBpm = VIBE_DEFAULT_BPM[vibeId] || 118;
+    let effectiveBpm = (VIBE_DEFAULT_BPM[vibeId] || 118) * rateScale;
     let bpmSource = hasLiveFFT ? "detecting" : "est";
     if (this.tapBpm > 0) {
       effectiveBpm = this.tapBpm;

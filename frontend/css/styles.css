@@ -3310,9 +3310,22 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 }
 
 .eq-modal-card {
-  width: min(440px, 100%);
+  width: min(450px, 100%);
   max-height: min(88vh, 88dvh);
   overflow-y: auto;
+}
+
+.eq-modal-card::-webkit-scrollbar {
+  width: 5px;
+}
+
+.eq-modal-card::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 99px;
+}
+
+.fx-dsp-sliders {
+  margin-top: 2px;
 }
 
 .fx-yt-notice {
@@ -3335,6 +3348,7 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 .cf-btn,
 .vis-int-btn,
 .beat-int-btn,
+.sound-mode-btn,
 .skin-btn,
 .pastel-btn {
   padding: 6px 11px;
@@ -3352,6 +3366,7 @@ body[data-vibe="melancholy"] .lyric-word.word-active { transform: translateY(1px
 .cf-btn.active,
 .vis-int-btn.active,
 .beat-int-btn.active,
+.sound-mode-btn.active,
 .skin-btn.active,
 .pastel-btn.active {
   background: #ffffff;
@@ -4070,6 +4085,7 @@ body[data-skin="pastel"] .eq-preset-btn,
 body[data-skin="pastel"] .cf-btn,
 body[data-skin="pastel"] .vis-int-btn,
 body[data-skin="pastel"] .beat-int-btn,
+body[data-skin="pastel"] .sound-mode-btn,
 body[data-skin="pastel"] .skin-btn,
 body[data-skin="pastel"] .pastel-btn {
   background: rgba(35, 22, 56, 0.07);
@@ -4081,6 +4097,7 @@ body[data-skin="pastel"] .eq-preset-btn.active,
 body[data-skin="pastel"] .cf-btn.active,
 body[data-skin="pastel"] .vis-int-btn.active,
 body[data-skin="pastel"] .beat-int-btn.active,
+body[data-skin="pastel"] .sound-mode-btn.active,
 body[data-skin="pastel"] .skin-btn.active,
 body[data-skin="pastel"] .pastel-btn.active {
   background: #231638;

@@ -17,6 +17,16 @@ import {
   VIBE_BEAT_GAIN,
   VIBE_DEFAULT_BPM,
 } from "../frontend/js/beat-engine.js";
+import {
+  DEFAULT_SOUND_FX,
+  SOUND_MODE_PRESETS,
+  buildTapeDriveCurve,
+  computeReverbMix,
+  computeWarmthParams,
+  detectSoundPresetMatch,
+  mapYoutubeRate,
+  normalizeSoundFx,
+} from "../frontend/js/audio-fx.js";
 
 test("parseClientLrc parses standard LRC and skips metadata headers", () => {
   const raw = [
@@ -250,4 +260,43 @@ test("BeatEngine supports Tap Tempo, vibe scaling, and YouTube Embed fallback", 
   const autoSnap = engine.getSnapshot({ isPlaying: true, hasLiveFFT: false, vibeId: "chill", enabled: true });
   assert.equal(autoSnap.bpmSource, "est");
   assert.equal(autoSnap.bpm, VIBE_DEFAULT_BPM.chill);
+});
+
+test("audio-fx presets, warmth curve, reverb mix, and YouTube speed fallback", () => {
+  const norm = normalizeSoundFx({ speed: 2.5, reverb: -0.5, warmth: 1.5, crackle: 1 });
+  assert.equal(norm.speed, 1.35);
+  assert.equal(norm.reverb, 0);
+  assert.equal(norm.warmth, 1);
+  assert.equal(norm.crackle, true);
+
+  assert.equal(detectSoundPresetMatch(DEFAULT_SOUND_FX), "normal");
+  assert.equal(detectSoundPresetMatch(SOUND_MODE_PRESETS.slowed), "slowed");
+  assert.equal(detectSoundPresetMatch(SOUND_MODE_PRESETS.lofi), "lofi");
+  assert.equal(detectSoundPresetMatch(SOUND_MODE_PRESETS.vaporwave), "vaporwave");
+  assert.equal(detectSoundPresetMatch(SOUND_MODE_PRESETS.nightcore), "nightcore");
+  assert.equal(detectSoundPresetMatch(SOUND_MODE_PRESETS["8d"]), "8d");
+  assert.equal(detectSoundPresetMatch(SOUND_MODE_PRESETS.underwater), "underwater");
+  assert.equal(detectSoundPresetMatch({ ...SOUND_MODE_PRESETS.slowed, speed: 0.89 }), "custom");
+
+  const dryWarmth = computeWarmthParams(0);
+  const lofiWarmth = computeWarmthParams(0.68);
+  const deepWarmth = computeWarmthParams(1);
+  assert.equal(dryWarmth.cutoffHz, 20000);
+  assert.ok(lofiWarmth.cutoffHz < 3000 && lofiWarmth.cutoffHz > 1000);
+  assert.equal(deepWarmth.cutoffHz, 580);
+  assert.ok(lofiWarmth.midWarmthDb > 0);
+
+  const mix0 = computeReverbMix(0);
+  const mix1 = computeReverbMix(1);
+  assert.equal(mix0.dryGain, 1);
+  assert.equal(mix0.wetGain, 0);
+  assert.ok(mix1.dryGain < 1 && mix1.wetGain > 0.7);
+
+  const curve = buildTapeDriveCurve(1.4, 128);
+  assert.equal(curve.length, 128);
+  assert.ok(curve[0] < -0.9 && curve[127] > 0.9);
+
+  assert.equal(mapYoutubeRate(0.84), 0.75);
+  assert.equal(mapYoutubeRate(0.94), 1);
+  assert.equal(mapYoutubeRate(1.22), 1.25);
 });
